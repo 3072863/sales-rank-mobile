@@ -1296,7 +1296,7 @@
         if (copyBtn && entry) {
           copyBtn.addEventListener('click', () => {
             copyOrderCardToClipboard(code, orderEntryText(code, entry))
-              .then((copyMode) => showToast(copyMode === 'rich' || copyMode === 'imageText'
+              .then((copyMode) => showToast(copyMode === 'richHtml' || copyMode === 'rich' || copyMode === 'imageText'
                 ? '已复制图片和文字，请粘贴查看'
                 : (copyMode === 'image'
                   ? '当前浏览器不支持图文同粘，已复制商品图'
@@ -1757,40 +1757,81 @@
       };
     }
 
-    async function buildOrderRichContent(code, text) {
-      const image = await buildProductMessageImage(code);
+    function buildOrderRichHtml(code, text) {
+      const item = allItems.find((candidate) =>
+        String(candidate.code || '').trim() === String(code || '').trim()) || null;
       const codeText = escapeClipboardHtml(code);
       const bodyText = escapeClipboardHtml(text);
-      const html =
-        '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Microsoft YaHei\',sans-serif;color:#172b49">' +
-          '<div style="margin:0 0 12px">' +
-            '<img src="' + image.dataUrl + '" alt="' + codeText +
+      let imageSrc = String(item && item.pic || '').trim();
+      try {
+        if (imageSrc) imageSrc = new URL(imageSrc, location.href).href;
+      } catch (error) {
+        // 图片地址异常时保留原值，避免整次复制失败。
+      }
+      const imageHtml = imageSrc
+        ? '<div style="margin:0 0 12px">' +
+            '<img src="' + escapeClipboardHtml(imageSrc) + '" alt="' + codeText +
               '" style="display:block;width:100%;max-width:480px;height:auto;border-radius:14px">' +
-          '</div>' +
+          '</div>'
+        : '';
+      return (
+        '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Microsoft YaHei\',sans-serif;color:#172b49">' +
+          imageHtml +
           '<div style="font-size:17px;line-height:1.7;white-space:pre-wrap">' + bodyText + '</div>' +
-        '</div>';
+        '</div>'
+      );
+    }
+
+    function copyOrderRichHtmlToClipboard(code, text) {
+      const source = document.createElement('div');
+      source.style.cssText =
+        'position:fixed;left:-10000px;top:0;width:520px;white-space:normal;' +
+        'font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif;color:#172b49';
+      source.innerHTML = buildOrderRichHtml(code, text);
+      document.body.appendChild(source);
+
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(source);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } finally {
+        selection.removeAllRanges();
+        source.remove();
+      }
+      return copied;
+    }
+
+    async function buildOrderRichContent(code, text) {
+      const image = await buildProductMessageImage(code);
       return {
         imageBlob: image.blob,
-        html,
+        html: buildOrderRichHtml(code, text),
       };
     }
 
     async function copyOrderCardToClipboard(code, text) {
+      try {
+        if (copyOrderRichHtmlToClipboard(code, text)) return 'richHtml';
+      } catch (error) {
+        // Clipboard API 作为兼容兜底。
+      }
       if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
-        const richPromise = buildOrderRichContent(code, text);
         try {
           await navigator.clipboard.write([
             new ClipboardItem({
-              'image/png': richPromise.then((content) => content.imageBlob),
-              'text/html': richPromise.then((content) =>
-                new Blob([content.html], { type: 'text/html' })),
+              'text/html': new Blob([buildOrderRichHtml(code, text)], { type: 'text/html' }),
               'text/plain': new Blob([text], { type: 'text/plain' }),
             }),
           ]);
-          return 'rich';
+          return 'richHtml';
         } catch (error) {
-          // 个别手机不支持 HTML 剪贴板，退回“图片 + 纯文字”双格式。
+          // 个别浏览器不支持只写 HTML，继续使用图片与文字双格式。
         }
+        const richPromise = buildOrderRichContent(code, text);
         try {
           await navigator.clipboard.write([
             new ClipboardItem({
@@ -1845,7 +1886,7 @@
         }
         refreshOrderRecordBox(item.code);
         renderCards();
-        const copied = copyMode === 'rich' || copyMode === 'imageText'
+        const copied = copyMode === 'richHtml' || copyMode === 'rich' || copyMode === 'imageText'
           ? '已复制图片和文字'
           : (copyMode === 'image'
             ? '当前浏览器不支持图文同粘，已复制商品图'
