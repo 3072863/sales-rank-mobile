@@ -1759,6 +1759,13 @@
       lines.push('下单货号：' + item.code + '（合计 ' + fmtInt(total) + '双）');
       picks.forEach((size) => lines.push(size.s + '码 ' + fmtInt(size.plan) + '双'));
       const text = lines.join('\n');
+      const showOrderedAfterCopy = () => {
+        closeDetail();
+        $('q').value = '';
+        selectFilter('ordered');
+        applyFilter();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
       const done = async (copyMode) => {
         let savedToServer = true;
         try {
@@ -1770,8 +1777,7 @@
         } catch (error) {
           savedToServer = false;
         }
-        refreshOrderRecordBox(item.code);
-        renderCards();
+        showOrderedAfterCopy();
         const copied = copyMode === 'richHtml' || copyMode === 'rich' || copyMode === 'imageText'
           ? '已复制图片和文字'
           : (copyMode === 'image'
