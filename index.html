@@ -1317,7 +1317,7 @@
         '<div class="stat-grid">' +
           '<div class="stat"><div class="stat-l">近30天发货</div><div class="stat-v">' + fmtInt(item.s30) + ' 双</div></div>' +
           '<div class="stat"><div class="stat-l">仓库库存</div><div class="stat-v">' + fmtInt(item.stock) + ' 双</div></div>' +
-          '<div class="stat"><div class="stat-l">退货率</div><div class="stat-v" title="统计30~60天前付款的成熟订单：只有真实退款成功（onlineStatus=7）的件数 ÷ 付款件数；换货/补发成功（onlineStatus=11）不算退货">' + (item.rate == null ? '—' : item.rate.toFixed(1) + '%') + '</div></div>' +
+          '<div class="stat"><div class="stat-l">退货率</div><div class="stat-v" title="统计约5~60天前付款的成熟订单；分子＝真实退款成功（onlineStatus=7）＋已申请退货且包裹已在寄回途中的件数；仅待买家退货、换货、维修、补发不算退货">' + (item.rate == null ? '—' : item.rate.toFixed(1) + '%') + '</div></div>' +
           '<div class="stat"><div class="stat-l">成本</div><div class="stat-v">' + fmtMoney(item.cost) + '</div></div>' +
           '<div class="stat"><div class="stat-l">库存金额</div><div class="stat-v money">' + fmtMoney(item.totalAmount) + '</div></div>' +
           '<div class="stat"><div class="stat-l">创建日期</div><div class="stat-v" style="font-size:12px">' + esc(fmtDate(item.created)) + '</div></div>' +
