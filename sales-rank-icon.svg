@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="销售排行图标">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2F6BFF"/>
+      <stop offset="0.52" stop-color="#1849D8"/>
+      <stop offset="1" stop-color="#0A1D57"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(118 74) rotate(43) scale(430)">
+      <stop stop-color="#8BB7FF" stop-opacity="0.72"/>
+      <stop offset="0.54" stop-color="#3B82F6" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#06143C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="barFront" x1="144" y1="340" x2="380" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D7E8FF"/>
+      <stop offset="0.55" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FBFF"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="122" y1="344" x2="396" y2="136" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE8A3"/>
+      <stop offset="0.42" stop-color="#FFC447"/>
+      <stop offset="1" stop-color="#FF8A1F"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#04123B" flood-opacity="0.34"/>
+    </filter>
+    <filter id="lineGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect x="9" y="9" width="494" height="494" rx="112" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="2"/>
+
+  <g filter="url(#shadow)">
+    <rect x="116" y="315" width="72" height="96" rx="24" fill="url(#barFront)"/>
+    <rect x="220" y="254" width="72" height="157" rx="24" fill="url(#barFront)"/>
+    <rect x="324" y="177" width="72" height="234" rx="24" fill="url(#barFront)"/>
+  </g>
+
+  <path d="M121 346C175 343 218 309 252 265C286 222 326 192 382 163"
+        fill="none" stroke="#092665" stroke-opacity="0.28" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round" transform="translate(0 9)"/>
+  <path d="M121 346C175 343 218 309 252 265C286 222 326 192 382 163"
+        fill="none" stroke="url(#gold)" stroke-width="24"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#lineGlow)"/>
+  <path d="M350 155L398 145L388 193" fill="none" stroke="url(#gold)" stroke-width="24"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="121" cy="346" r="12" fill="#FFFFFF"/>
+  <circle cx="121" cy="346" r="5" fill="#FFC447"/>
+
+  <g fill="#FFFFFF" fill-opacity="0.92">
+    <path d="M101 126L107 143L124 149L107 155L101 172L95 155L78 149L95 143Z"/>
+    <path d="M397 87L401 98L412 102L401 106L397 117L393 106L382 102L393 98Z" fill-opacity="0.62"/>
+  </g>
+</svg>
