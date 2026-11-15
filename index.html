@@ -1269,7 +1269,7 @@
                 '<div class="order-record-item-meta">' + esc(orderTimeText(entry.t)) +
                   '<b>' + fmtInt(entry.q) + ' 双</b></div>' +
                 '<div class="order-record-item-actions">' +
-                  '<button type="button" class="order-record-btn" data-order-copy="1">复制</button>' +
+                  '<button type="button" class="order-record-btn" data-order-copy="1">复制图文</button>' +
                   '<button type="button" class="order-record-btn danger" data-order-delete="1">删除</button>' +
                 '</div>' +
               '</div>' +
@@ -1296,9 +1296,11 @@
         if (copyBtn && entry) {
           copyBtn.addEventListener('click', () => {
             copyOrderCardToClipboard(code, orderEntryText(code, entry))
-              .then((copyMode) => showToast(copyMode === 'image'
-                ? '已复制带商品图的这条补货记录'
-                : '图片复制不可用，已复制文字'))
+              .then((copyMode) => showToast(copyMode === 'rich' || copyMode === 'imageText'
+                ? '已复制图片和文字，请粘贴查看'
+                : (copyMode === 'image'
+                  ? '当前浏览器不支持图文同粘，已复制商品图'
+                  : '已复制补货文字')))
               .catch(() => showToast('复制失败，请长按记录文字手动复制'));
           });
         }
@@ -1446,7 +1448,7 @@
           '<button class="btn todo' + (onTodo ? ' on' : '') + '" id="toggleTodo">' +
             (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') +
           '</button>' +
-          '<button class="btn primary" id="copyPlan">📋 复制并记录补货清单</button>' +
+          '<button class="btn primary" id="copyPlan">📋 复制图文并补货</button>' +
           '<button class="btn close-action" data-close="1">关闭</button>' +
         '</div>';
       $('sheetWrap').classList.add('open');
@@ -1708,9 +1710,99 @@
       });
     }
 
+    function escapeClipboardHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    async function buildProductMessageImage(code) {
+      const item = allItems.find((candidate) =>
+        String(candidate.code || '').trim() === String(code || '').trim()) || null;
+      const image = await loadOrderCardImage(item && item.pic);
+      const size = 920;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, size, size);
+      if (image) {
+        const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+        const drawW = image.naturalWidth * scale;
+        const drawH = image.naturalHeight * scale;
+        ctx.drawImage(image, (size - drawW) / 2, (size - drawH) / 2, drawW, drawH);
+      } else {
+        ctx.fillStyle = '#172b49';
+        ctx.font = '800 72px "Microsoft YaHei", "PingFang SC", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(code || ''), size / 2, size / 2 - 34);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '500 32px "Microsoft YaHei", "PingFang SC", sans-serif';
+        ctx.fillText('商品图片暂时无法加载', size / 2, size / 2 + 52);
+      }
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((value) => {
+          if (value) resolve(value);
+          else reject(new Error('product image failed'));
+        }, 'image/png');
+      });
+      return {
+        blob,
+        dataUrl: canvas.toDataURL('image/png'),
+      };
+    }
+
+    async function buildOrderRichContent(code, text) {
+      const image = await buildProductMessageImage(code);
+      const codeText = escapeClipboardHtml(code);
+      const bodyText = escapeClipboardHtml(text);
+      const html =
+        '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Microsoft YaHei\',sans-serif;color:#172b49">' +
+          '<div style="margin:0 0 12px">' +
+            '<img src="' + image.dataUrl + '" alt="' + codeText +
+              '" style="display:block;width:100%;max-width:480px;height:auto;border-radius:14px">' +
+          '</div>' +
+          '<div style="font-size:17px;line-height:1.7;white-space:pre-wrap">' + bodyText + '</div>' +
+        '</div>';
+      return {
+        imageBlob: image.blob,
+        html,
+      };
+    }
+
     async function copyOrderCardToClipboard(code, text) {
-      const blobPromise = buildOrderCardBlob(code, text);
       if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+        const richPromise = buildOrderRichContent(code, text);
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'image/png': richPromise.then((content) => content.imageBlob),
+              'text/html': richPromise.then((content) =>
+                new Blob([content.html], { type: 'text/html' })),
+              'text/plain': new Blob([text], { type: 'text/plain' }),
+            }),
+          ]);
+          return 'rich';
+        } catch (error) {
+          // 个别手机不支持 HTML 剪贴板，退回“图片 + 纯文字”双格式。
+        }
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'image/png': richPromise.then((content) => content.imageBlob),
+              'text/plain': new Blob([text], { type: 'text/plain' }),
+            }),
+          ]);
+          return 'imageText';
+        } catch (error) {
+          // 再退回单张图片。
+        }
+        const blobPromise = buildOrderCardBlob(code, text);
         try {
           await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blobPromise }),
@@ -1719,8 +1811,8 @@
         } catch (error) {
           // 某些手机浏览器不支持复制图片，保留纯文字兜底。
         }
+        await blobPromise.catch(() => null);
       }
-      await blobPromise.catch(() => null);
       await copyTextToClipboard(text);
       return 'text';
     }
@@ -1753,7 +1845,11 @@
         }
         refreshOrderRecordBox(item.code);
         renderCards();
-        const copied = copyMode === 'image' ? '已复制带图补货单' : '图片复制不可用，已复制文字';
+        const copied = copyMode === 'rich' || copyMode === 'imageText'
+          ? '已复制图片和文字'
+          : (copyMode === 'image'
+            ? '当前浏览器不支持图文同粘，已复制商品图'
+            : '已复制补货文字');
         showToast(copied + (!syncEnabled
           ? '并记录到本机 ' + fmtInt(total) + ' 双'
           : (savedToServer
