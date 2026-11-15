@@ -536,11 +536,15 @@
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) {}
     }
 
-    function warnOf(s30, stock, chart, backendWarn) {
+    function warnOf(s30, stock, chart, backendWarn, temporarilyNoRestock) {
       const sizes = chart && Array.isArray(chart.sizes) ? chart.sizes : [];
       const plan = sizes.length
         ? sizes.reduce((sum, size) => sum + num(size.plan), 0)
         : num(chart && chart.plan);
+      if (temporarilyNoRestock) {
+        if (!(s30 > 0)) return { text: '暂不补', level: '' };
+        return { text: '暂不补 · 可卖 ' + Math.round(stock / (s30 / 30)) + ' 天', level: '' };
+      }
       if (!(s30 > 0)) {
         if (backendWarn) return { text: plan > 0 ? '缺码需补 ' + fmtInt(plan) + ' 双' : '库存需关注', level: 'yellow' };
         return { text: '暂无销量', level: '' };
@@ -570,7 +574,7 @@
       const pics = (sr && sr.pics) || {};
       const chart = (sr && sr.chart) || {};
       const rows = Array.isArray(sr && sr.rows) ? sr.rows : [];
-      const restockCodes = new Set((restock && restock.rows || []).map((row) => String(row[0] ?? '')));
+      const restockByCode = new Map((restock && restock.rows || []).map((row) => [String(row[0] ?? ''), row]));
 
       const items = [];
       let hiddenNamedNorestock = 0;
@@ -592,6 +596,9 @@
         const cost = iRate >= 0 ? num(row[iRate + 1]) : 0;
         const created = iRate >= 0 ? row[iRate + 2] : '';
         const ch = chart[code] || null;
+        const restockRow = restockByCode.get(code);
+        const restockAction = String(restockRow && restockRow[3] || '');
+        const temporarilyNoRestock = restockAction.includes('暂不补');
         items.push({
           code,
           display,
@@ -604,7 +611,8 @@
           cost,
           created,
           totalAmount: cost > 0 && stock > 0 ? stock * cost : 0,
-          warn: warnOf(s30, stock, ch, restockCodes.has(code)),
+          warn: warnOf(s30, stock, ch, !!restockRow && !temporarilyNoRestock, temporarilyNoRestock),
+          temporarilyNoRestock,
           chart: ch,
           plan: ch && Array.isArray(ch.sizes)
             ? ch.sizes.reduce((sum, size) => sum + num(size.plan), 0)
@@ -638,6 +646,7 @@
 
     function matchesFilter(item) {
       if ((currentFilter === 'warn' || currentFilter === 'need') && item.soldOutNoRestock) return false;
+      if ((currentFilter === 'warn' || currentFilter === 'need') && item.temporarilyNoRestock) return false;
       if (currentFilter === 'warn') return !!item.warn.level;
       if (currentFilter === 'need') return !!item.warn.level && planTotalOf(item) > 0;
       if (currentFilter === 'todo') {
