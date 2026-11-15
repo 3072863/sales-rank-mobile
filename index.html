@@ -360,10 +360,6 @@
       font-variant-numeric: tabular-nums;
     }
     .size-table tfoot td:first-child { color: #55637a; }
-    .detail-summary {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
-    }
-    .metric-pill { padding: 5px 8px; border-radius: 999px; background: #f2f5fa; color: #56657a; font-size: 11px; }
     .note-box { margin-top: 16px; }
     .note-box label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--muted); font-weight: 700; }
     .note-status { font-size: 10px; font-weight: 500; color: var(--muted); }
@@ -1386,9 +1382,6 @@
           '<div class="stat"><div class="stat-l">成本</div><div class="stat-v">' + fmtMoney(item.cost) + '</div></div>' +
           '<div class="stat"><div class="stat-l">库存金额</div><div class="stat-v money">' + fmtMoney(item.totalAmount) + '</div></div>' +
           '<div class="stat"><div class="stat-l">创建日期</div><div class="stat-v" style="font-size:12px">' + esc(fmtDate(item.created)) + '</div></div>' +
-        '</div>' +
-        '<div class="detail-summary">' +
-          '<span class="metric-pill">' + esc(item.warn.text) + '</span>' +
         '</div>' +
         '<section class="section">' +
           '<div class="section-h"><h2>尺码分布</h2><span title="最低20双；近30天发货少于30双的慢销款按2/4/5/5/4/2保底比例；快销款按近60天尺码结构平滑，单码计划最多占订单40%">售 = 发货 · 存 = 74号仓 · 补 = 点数字微调 · 补后 = 存+补</span></div>' +
