@@ -796,8 +796,8 @@
     function matchesFilter(item) {
       if ((currentFilter === 'warn' || currentFilter === 'need') && item.soldOutNoRestock) return false;
       if ((currentFilter === 'warn' || currentFilter === 'need') && item.temporarilyNoRestock) return false;
-      if (currentFilter === 'warn') return !!item.warn.level;
-      if (currentFilter === 'need') return !!item.warn.level && planTotalOf(item) > 0;
+      if (currentFilter === 'warn') return !!item.warn.level && num(item.plan) < 20;
+      if (currentFilter === 'need') return !!item.warn.level && num(item.plan) >= 20;
       if (currentFilter === 'todo') {
         return todoHas(item.code);
       }
@@ -831,9 +831,11 @@
       if (sortBySuggestedPlan) {
         filteredItems = sortItemsBySuggestedPlan(filteredItems);
       }
-      $('sortNote').textContent = sortBySuggestedPlan
-        ? '按系统补货数量从多到少'
-        : defaultSortNote;
+      $('sortNote').textContent = currentFilter === 'warn'
+        ? '计划补单 <20 双 · 按数量从多到少'
+        : (currentFilter === 'need'
+          ? '计划补单 ≥20 双 · 按数量从多到少'
+          : defaultSortNote);
       renderCards();
     }
 
