@@ -471,7 +471,7 @@
       </div>
       <div class="search">
         <span class="ic">⌕</span>
-        <input id="q" type="search" autocomplete="off" placeholder="搜索货号">
+        <input id="q" type="search" autocomplete="off" placeholder="搜索全部货号">
         <button class="clear" id="clear" aria-label="清空搜索">×</button>
       </div>
       <div class="filters" id="filters">
@@ -814,8 +814,17 @@
         .map((entry) => entry.item);
     }
 
+    function selectFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter').forEach((node) => {
+        node.classList.toggle('on', node.dataset.filter === filter);
+      });
+    }
+
     function applyFilter() {
       const query = $('q').value.trim().toLowerCase();
+      const searching = Boolean(query);
+      if (searching && currentFilter !== 'all') selectFilter('all');
       $('clear').style.display = query ? 'block' : 'none';
       const filterKey = currentFilter + '\n' + query;
       if (filterKey !== lastFilterKey) {
@@ -823,11 +832,12 @@
         lastFilterKey = filterKey;
       }
       filteredItems = allItems.filter((item) => {
-        if (!matchesFilter(item)) return false;
-        if (!query) return true;
-        return item.code.toLowerCase().includes(query) || item.display.toLowerCase().includes(query);
+        if (!searching) return matchesFilter(item);
+        return item.code.toLowerCase().includes(query) ||
+          item.display.toLowerCase().includes(query);
       });
-      const sortBySuggestedPlan = currentFilter === 'warn' || currentFilter === 'need';
+      const sortBySuggestedPlan = !searching &&
+        (currentFilter === 'warn' || currentFilter === 'need');
       if (sortBySuggestedPlan) {
         filteredItems = sortItemsBySuggestedPlan(filteredItems);
       }
@@ -2067,8 +2077,7 @@
     $('filters').addEventListener('click', (event) => {
       const button = event.target.closest('[data-filter]');
       if (!button) return;
-      currentFilter = button.dataset.filter;
-      document.querySelectorAll('.filter').forEach((node) => node.classList.toggle('on', node === button));
+      selectFilter(button.dataset.filter);
       applyFilter();
     });
     $('cards').addEventListener('click', (event) => {
@@ -2095,6 +2104,11 @@
     $('loadMore').addEventListener('click', () => {
       visibleLimit += PAGE_SIZE;
       renderCards();
+    });
+    window.addEventListener('pageshow', () => {
+      $('q').value = '';
+      selectFilter('all');
+      applyFilter();
     });
 
     const syncToTop = () => $('toTop').classList.toggle('show', window.scrollY > 900);
