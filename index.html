@@ -678,7 +678,7 @@
       if ((currentFilter === 'warn' || currentFilter === 'need') && item.soldOutNoRestock) return false;
       if ((currentFilter === 'warn' || currentFilter === 'need') && item.temporarilyNoRestock) return false;
       if (currentFilter === 'warn') return !!item.warn.level && num(item.plan) < 20;
-      if (currentFilter === 'need') return !!item.warn.level && num(item.plan) >= 20;
+      if (currentFilter === 'need') return !!item.warn.level && num(item.plan) >= 20 && !orderRecordOf(item.code);
       if (currentFilter === 'ordered') return Boolean(orderRecordOf(item.code));
       return true;
     }
@@ -723,7 +723,7 @@
       $('sortNote').textContent = currentFilter === 'warn'
         ? '计划补单 <20 双 · 按数量从多到少'
         : (currentFilter === 'need'
-          ? '计划补单 ≥20 双 · 按数量从多到少'
+          ? '计划补单 ≥20 双 · 已下单不在本页 · 按数量从多到少'
           : (currentFilter === 'ordered'
             ? '已下单、工厂未送达 · 按销售排行顺序'
             : defaultSortNote));
