@@ -536,19 +536,30 @@
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) {}
     }
 
-    function warnOf(s30, stock) {
-      if (!(s30 > 0)) return { text: '暂无销量', level: '' };
+    function warnOf(s30, stock, chart, backendWarn) {
+      const sizes = chart && Array.isArray(chart.sizes) ? chart.sizes : [];
+      const plan = sizes.length
+        ? sizes.reduce((sum, size) => sum + num(size.plan), 0)
+        : num(chart && chart.plan);
+      if (!(s30 > 0)) {
+        if (backendWarn) return { text: plan > 0 ? '缺码需补 ' + fmtInt(plan) + ' 双' : '库存需关注', level: 'yellow' };
+        return { text: '暂无销量', level: '' };
+      }
       const days = stock / (s30 / 30);
       const rounded = Math.round(days);
       if (days <= 0) return { text: '已断货', level: 'red' };
       if (days < DAYS_RED) return { text: '仅够 ' + rounded + ' 天', level: 'red' };
       if (days < DAYS_ORANGE) return { text: '偏紧 ' + rounded + ' 天', level: 'orange' };
-      if (days < DAYS_YELLOW) return { text: '关注 ' + rounded + ' 天', level: 'yellow' };
+      if (days <= DAYS_YELLOW) return { text: '关注 ' + rounded + ' 天', level: 'yellow' };
       if (stock <= MIN_STOCK) return { text: '仅剩 ' + stock + ' 双', level: 'yellow' };
+      // 尺码还有缺口时，即使整款总量够卖，也继续保持预警；下单记录不抵扣计划补单。
+      if (plan > 0) return { text: '缺码需补 ' + fmtInt(plan) + ' 双', level: 'yellow' };
+      // 与后台库存预警中心保持同一名单，避免手机端整款总量算法把在途款提前清掉。
+      if (backendWarn) return { text: '库存需关注 ' + rounded + ' 天', level: 'yellow' };
       return { text: '可卖 ' + rounded + ' 天', level: '' };
     }
 
-    function parseItems(sr) {
+    function parseItems(sr, restock) {
       const cols = Array.isArray(sr && sr.cols) ? sr.cols : [];
       const iCode = cols.indexOf('货号');
       const i30 = cols.indexOf('近30天发货');
@@ -559,6 +570,7 @@
       const pics = (sr && sr.pics) || {};
       const chart = (sr && sr.chart) || {};
       const rows = Array.isArray(sr && sr.rows) ? sr.rows : [];
+      const restockCodes = new Set((restock && restock.rows || []).map((row) => String(row[0] ?? '')));
 
       const items = [];
       let hiddenNamedNorestock = 0;
@@ -592,7 +604,7 @@
           cost,
           created,
           totalAmount: cost > 0 && stock > 0 ? stock * cost : 0,
-          warn: warnOf(s30, stock),
+          warn: warnOf(s30, stock, ch, restockCodes.has(code)),
           chart: ch,
           plan: ch && Array.isArray(ch.sizes)
             ? ch.sizes.reduce((sum, size) => sum + num(size.plan), 0)
@@ -1407,13 +1419,13 @@
       const sr = data && data.details && data.details.sales_rank;
       if (!sr) throw new Error('接口没有销售排行数据');
       latestDashboard = data;
-      const parsed = parseItems(sr);
+      const restock = data.details.restock || {};
+      const parsed = parseItems(sr, restock);
       allItems = parsed.items;
       $('sortNote').textContent = parsed.hiddenNamedNorestock
         ? '已过滤未备货 ' + parsed.hiddenNamedNorestock + ' 款'
         : '按桌面版销售排行顺序';
       const today = sr.today || {};
-      const restock = data.details.restock || {};
       lastDashboardStatus = (STATIC_SNAPSHOT ? (syncEnabled ? '共享快照 ' : '快照 ') : '库存 ') + (restock.updated || '—') +
         ' · 今日 ¥' + fmtInt(today.amount) + ' / ' + fmtInt(today.orders) + ' 单';
       $('updated').textContent = lastDashboardStatus;
