@@ -207,12 +207,6 @@
     .tag.yellow { background: var(--yellow-soft); color: var(--yellow); }
     .tag.green { background: var(--green-soft); color: var(--green); }
     .tag.ship { background: #eef2ff; color: #4a5da8; }
-    .tag.todo-toggle {
-      appearance: none; border: 1px solid #f1d39a;
-      background: #fffaf0; color: #a65b00; cursor: pointer;
-      font-family: inherit; touch-action: manipulation;
-    }
-    .tag.todo-toggle.on { border-color: #bbf7d0; background: #ecfdf3; color: #15803d; }
     .sizes {
       align-self: center;
       display: grid;
@@ -824,16 +818,12 @@
         const orderTag = orderRecord
           ? '<span class="tag green">工厂已记单 ' + fmtInt(orderRecord.q) + ' 双</span>'
           : '';
-        const onTodo = todoHas(item.code);
-        const todoTag = '<button type="button" class="tag todo-toggle' + (onTodo ? ' on' : '') +
-          '" data-todo-toggle="' + esc(item.code) + '" aria-pressed="' + onTodo + '">' +
-          (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') + '</button>';
         const shipTag = '<span class="tag ship">30天已发 ' + fmtInt(item.s30) + ' 双</span>';
         return '<article class="sr-card" data-code="' + esc(item.code) + '" tabindex="0" role="button" aria-label="查看 ' + esc(item.code) + ' 详情">' +
           '<div class="rank">#' + item.rank + '</div>' +
           '<div class="pic-box">' + picHtml(item) + '</div>' +
           '<div class="head"><div class="code">' + esc(item.code) + '</div>' + alias +
-            '<div class="tag-row">' + shipTag + warnTag + planTag + orderTag + todoTag + '</div>' +
+            '<div class="tag-row">' + shipTag + warnTag + planTag + orderTag + '</div>' +
           '</div>' +
           '<div class="sizes">' + sizeGridHtml(item) + '</div>' +
           '<div class="more"><span>总库存 <b>' + fmtInt(item.stock) + ' 双</b> · 补 = 计划补单</span><strong>点开看全部 ›</strong></div>' +
@@ -1681,19 +1671,11 @@
       applyFilter();
     });
     $('cards').addEventListener('click', (event) => {
-      const todoButton = event.target.closest('[data-todo-toggle]');
-      if (todoButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        void toggleTodo(todoButton.dataset.todoToggle);
-        return;
-      }
       const card = event.target.closest('.sr-card');
       if (card) openDetail(card.dataset.code);
     });
     $('cards').addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
-      if (event.target.closest('[data-todo-toggle]')) return;
       const card = event.target.closest('.sr-card');
       if (!card) return;
       event.preventDefault();
