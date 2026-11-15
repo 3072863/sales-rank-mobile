@@ -207,6 +207,12 @@
     .tag.yellow { background: var(--yellow-soft); color: var(--yellow); }
     .tag.green { background: var(--green-soft); color: var(--green); }
     .tag.ship { background: #eef2ff; color: #4a5da8; }
+    .tag.todo-toggle {
+      appearance: none; border: 1px solid #f1d39a;
+      background: #fffaf0; color: #a65b00; cursor: pointer;
+      font-family: inherit; touch-action: manipulation;
+    }
+    .tag.todo-toggle.on { border-color: #bbf7d0; background: #ecfdf3; color: #15803d; }
     .sizes {
       align-self: center;
       display: grid;
@@ -402,6 +408,8 @@
       background: #fff; color: #475569; font-weight: 750;
     }
     .btn.primary { flex: 1; border-color: var(--blue); background: var(--blue); color: #fff; }
+    .btn.todo { border-color: #f1d39a; background: #fffaf0; color: #a65b00; }
+    .btn.todo.on { border-color: #86efac; background: #ecfdf3; color: #15803d; }
     .btn:disabled { opacity: .45; }
     .toast {
       position: fixed; left: 50%; bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
@@ -481,11 +489,14 @@
     const NOTE_PENDING_KEY = 'zs_sr_note_pending_v1';
     const NOTE_MIGRATED_KEY = 'zs_sr_note_migrated_v1';
     const TODO_KEY = 'zs_sr_todo_manual_v1';
+    const TODO_PENDING_KEY = 'zs_sr_todo_pending_v1';
     const ORDER_KEY = 'zs_sr_order_v1';
     const ORDER_RECORDS_API = '/svc8123/api/restock/order-records';
     const ORDER_RECORD_API = '/svc8123/api/restock/order-record';
     const RESTOCK_NOTES_API = '/svc8123/api/restock/notes';
     const RESTOCK_NOTE_API = '/svc8123/api/restock/note';
+    const TODO_RECORDS_API = '/svc8123/api/restock/todo-records';
+    const TODO_RECORD_API = '/svc8123/api/restock/todo-record';
     const SYNC_ENDPOINT_LOOKUP = 'https://api.github.com/repos/3072863/3072863/contents/sales-rank-endpoint.json?ref=main';
     const API_BASE_KEY = 'zs_sr_api_base_v1';
     const ORDER_TTL_MS = 30 * 86400000;
@@ -505,6 +516,8 @@
     let lastFilterKey = '';
     const planOverrides = Object.create(null);
     let orderRecords = readJson(ORDER_KEY, {});
+    let todoRecords = readJson(TODO_KEY, {});
+    let todoPending = readJson(TODO_PENDING_KEY, {});
     let noteSyncTimer = null;
     let apiBase = '';
     let syncEnabled = !STATIC_SNAPSHOT;
@@ -534,6 +547,117 @@
 
     function saveJson(key, value) {
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) {}
+    }
+
+    function todoStamp(value) {
+      if (value && typeof value === 'object') return num(value.t || value.updated_ts);
+      return num(value);
+    }
+
+    function todoHas(code) {
+      return todoStamp(todoRecords[String(code || '').trim()]) > 0;
+    }
+
+    function todoCount() {
+      return Object.keys(todoRecords).filter((code) => todoHas(code)).length;
+    }
+
+    function saveTodoRecords() {
+      saveJson(TODO_KEY, todoRecords);
+    }
+
+    function saveTodoPending() {
+      saveJson(TODO_PENDING_KEY, todoPending);
+    }
+
+    function setTodoLocal(code, on) {
+      const key = String(code || '').trim();
+      if (!key) return false;
+      if (on) todoRecords[key] = Date.now();
+      else delete todoRecords[key];
+      saveTodoRecords();
+      return !!on;
+    }
+
+    function mergeTodoRecords(remote) {
+      const next = {};
+      Object.entries(remote || {}).forEach(([code, value]) => {
+        const key = String(code || '').trim();
+        const stamp = todoStamp(value);
+        if (key && stamp > 0) next[key] = stamp;
+      });
+      todoRecords = next;
+      saveTodoRecords();
+    }
+
+    async function postTodoRecord(code, on) {
+      const response = await fetch(serviceUrl(TODO_RECORD_API), {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, on }),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const result = await response.json();
+      if (!result || result.success === false) throw new Error(result && result.msg || '保存需处理名单失败');
+      return result;
+    }
+
+    async function flushTodoPending() {
+      if (!syncEnabled) return false;
+      let allSaved = true;
+      const entries = Object.entries(todoPending || {});
+      for (const [code, value] of entries) {
+        const on = !!(value && value.on);
+        try {
+          await postTodoRecord(code, on);
+          delete todoPending[code];
+          saveTodoPending();
+        } catch (error) {
+          allSaved = false;
+          break;
+        }
+      }
+      return allSaved;
+    }
+
+    async function fetchTodoRecords() {
+      if (!syncEnabled) return todoRecords;
+      try {
+        await flushTodoPending();
+        const response = await fetch(serviceUrl(TODO_RECORDS_API), { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        if (!result || result.success === false) throw new Error(result && result.msg || '读取需处理名单失败');
+        mergeTodoRecords(result.todos);
+      } catch (error) {}
+      return todoRecords;
+    }
+
+    async function toggleTodo(code) {
+      const key = String(code || '').trim();
+      if (!key) return;
+      const on = !todoHas(key);
+      setTodoLocal(key, on);
+      todoPending[key] = { on, t: Date.now() };
+      saveTodoPending();
+      applyFilter();
+      if (currentCode === key && $('sheetWrap').classList.contains('open')) {
+        if (!on && currentFilter === 'todo') closeDetail();
+        else openDetail(key);
+      }
+      if (!syncEnabled) {
+        showToast(on ? '已标为需处理（本机）' : '已移出需处理（本机）', 1600);
+        return;
+      }
+      try {
+        const saved = await flushTodoPending();
+        showToast(saved && !todoPending[key]
+          ? (on ? '已标为需处理，已同步' : '已移出需处理，已同步')
+          : '已在本机保存，联网后再同步', 1800);
+      } catch (error) {
+        showToast('已在本机保存，联网后再同步', 1800);
+      }
     }
 
     function warnOf(s30, stock, chart, backendWarn, temporarilyNoRestock) {
@@ -650,8 +774,7 @@
       if (currentFilter === 'warn') return !!item.warn.level;
       if (currentFilter === 'need') return !!item.warn.level && planTotalOf(item) > 0;
       if (currentFilter === 'todo') {
-        const marks = readJson(TODO_KEY, {});
-        return Object.prototype.hasOwnProperty.call(marks, item.code);
+        return todoHas(item.code);
       }
       return true;
     }
@@ -705,12 +828,16 @@
         const orderTag = orderRecord
           ? '<span class="tag green">工厂已记单 ' + fmtInt(orderRecord.q) + ' 双</span>'
           : '';
+        const onTodo = todoHas(item.code);
+        const todoTag = '<button type="button" class="tag todo-toggle' + (onTodo ? ' on' : '') +
+          '" data-todo-toggle="' + esc(item.code) + '" aria-pressed="' + onTodo + '">' +
+          (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') + '</button>';
         const shipTag = '<span class="tag ship">30天已发 ' + fmtInt(item.s30) + ' 双</span>';
         return '<article class="sr-card" data-code="' + esc(item.code) + '" tabindex="0" role="button" aria-label="查看 ' + esc(item.code) + ' 详情">' +
           '<div class="rank">#' + item.rank + '</div>' +
           '<div class="pic-box">' + picHtml(item) + '</div>' +
           '<div class="head"><div class="code">' + esc(item.code) + '</div>' + alias +
-            '<div class="tag-row">' + shipTag + warnTag + planTag + orderTag + '</div>' +
+            '<div class="tag-row">' + shipTag + warnTag + planTag + orderTag + todoTag + '</div>' +
           '</div>' +
           '<div class="sizes">' + sizeGridHtml(item) + '</div>' +
           '<div class="more"><span>总库存 <b>' + fmtInt(item.stock) + ' 双</b> · 补 = 计划补单</span><strong>点开看全部 ›</strong></div>' +
@@ -1242,6 +1369,7 @@
       const planTag = adjustedPlan > 0
         ? '<span class="tag orange" id="detailPlanTag">计划补单 ' + fmtInt(adjustedPlan) + ' 双</span>'
         : '<span class="tag orange" id="detailPlanTag" hidden>计划补单 0 双</span>';
+      const onTodo = todoHas(code);
       $('sheet').innerHTML =
         '<div class="grab"></div>' +
         '<div class="sheet-head">' +
@@ -1274,6 +1402,9 @@
         '</div>' +
         orderRecordBoxHtml(code) +
         '<div class="sheet-actions">' +
+          '<button class="btn todo' + (onTodo ? ' on' : '') + '" id="toggleTodo">' +
+            (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') +
+          '</button>' +
           '<button class="btn" data-close="1">关闭</button>' +
           '<button class="btn primary" id="copyPlan">📋 复制并记录补货清单</button>' +
         '</div>';
@@ -1333,6 +1464,7 @@
         });
       }
       bindOrderRecordBox(code);
+      $('toggleTodo').addEventListener('click', () => toggleTodo(code));
       $('copyPlan').addEventListener('click', () => copyPlan(item));
     }
 
@@ -1521,7 +1653,7 @@
       $('refresh').disabled = true;
       $('updated').textContent = manual ? '正在刷新…' : $('updated').textContent;
       try {
-        const [data] = await Promise.all([fetchDashboard(), fetchOrderRecords(), fetchRestockNotes()]);
+        const [data] = await Promise.all([fetchDashboard(), fetchOrderRecords(), fetchRestockNotes(), fetchTodoRecords()]);
         renderDashboard(data, manual);
         const restock = data && data.details && data.details.restock;
         if (!STATIC_SNAPSHOT &&
@@ -1556,11 +1688,19 @@
       applyFilter();
     });
     $('cards').addEventListener('click', (event) => {
+      const todoButton = event.target.closest('[data-todo-toggle]');
+      if (todoButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        void toggleTodo(todoButton.dataset.todoToggle);
+        return;
+      }
       const card = event.target.closest('.sr-card');
       if (card) openDetail(card.dataset.code);
     });
     $('cards').addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.target.closest('[data-todo-toggle]')) return;
       const card = event.target.closest('.sr-card');
       if (!card) return;
       event.preventDefault();
