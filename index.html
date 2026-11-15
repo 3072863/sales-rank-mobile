@@ -400,6 +400,7 @@
     .btn.primary { flex: 1; border-color: var(--blue); background: var(--blue); color: #fff; }
     .btn.todo { border-color: #f1d39a; background: #fffaf0; color: #a65b00; }
     .btn.todo.on { border-color: #86efac; background: #ecfdf3; color: #15803d; }
+    .btn.close-action { flex: 0 0 82px; padding-left: 12px; padding-right: 12px; }
     .btn:disabled { opacity: .45; }
     .toast {
       position: fixed; left: 50%; bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
@@ -1389,7 +1390,7 @@
             (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') +
           '</button>' +
           '<button class="btn primary" id="copyPlan">📋 复制并记录补货清单</button>' +
-          '<button class="btn" data-close="1">关闭</button>' +
+          '<button class="btn close-action" data-close="1">关闭</button>' +
         '</div>';
       $('sheetWrap').classList.add('open');
       $('sheetWrap').setAttribute('aria-hidden', 'false');
