@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f6fb">
+  <title>销售排行 · 手机版</title>
+  <script>
+    (() => {
+      // 【2026-11-14·老板要求】手机端锁定 100%，禁用双指缩放和双击放大。
+      document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('gesturechange', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('gestureend', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('touchmove', (event) => {
+        if (event.touches.length > 1) event.preventDefault();
+      }, { passive: false });
+
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', (event) => {
+        const now = Date.now();
+        const interactive = event.target.closest('input,textarea,select,button,a,[contenteditable="true"]');
+        if (now - lastTouchEnd <= 320 && !interactive) event.preventDefault();
+        lastTouchEnd = now;
+      }, { passive: false });
+
+      document.addEventListener('wheel', (event) => {
+        if (event.ctrlKey) event.preventDefault();
+      }, { passive: false });
+    })();
+  </script>
+  <style>
+    :root {
+      /* iPhone 17 Pro Max：440 × 956 CSS px。真机更窄时由 100% 自动适配。 */
+      --phone-width: 440px;
+      --bg: #f3f5fa;
+      --card: #fff;
+      --ink: #172033;
+      --muted: #718096;
+      --line: #e5eaf2;
+      --blue: #2563eb;
+      --blue-soft: #eaf1ff;
+      --red: #dc2626;
+      --red-soft: #fff1f2;
+      --orange: #d97706;
+      --orange-soft: #fff7ed;
+      --yellow: #a16207;
+      --yellow-soft: #fefce8;
+      --green: #15803d;
+      --green-soft: #ecfdf3;
+      --shadow: 0 8px 24px rgba(34, 51, 84, .07);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { background: var(--bg); touch-action: pan-x pan-y; }
+    body {
+      margin: 0;
+      touch-action: pan-x pan-y;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 0%, rgba(37, 99, 235, .10), transparent 30%),
+        var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      min-height: 100vh;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .wrap {
+      width: min(100%, var(--phone-width));
+      margin: 0 auto;
+      padding: max(14px, env(safe-area-inset-top)) 0 max(28px, env(safe-area-inset-bottom));
+    }
+    .hero {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      margin: 0 0 12px;
+      padding: 14px 14px 12px;
+      background: rgba(243, 245, 250, .92);
+      border-bottom: 1px solid rgba(229, 234, 242, .9);
+      backdrop-filter: blur(16px);
+    }
+    .hero-row { display: flex; align-items: flex-start; gap: 10px; }
+    .hero h1 { margin: 0; font-size: 21px; line-height: 1.25; letter-spacing: -.3px; }
+    .hero-sub { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .hero-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #10b981;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, .12);
+    }
+    .icon-btn {
+      width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 11px;
+      background: rgba(255,255,255,.86); color: #42526b; font-size: 18px;
+    }
+    .search {
+      position: relative;
+      margin-top: 12px;
+    }
+    .search input {
+      width: 100%;
+      height: 43px;
+      padding: 0 38px 0 38px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+      box-shadow: 0 4px 16px rgba(34, 51, 84, .04);
+    }
+    .search input:focus { border-color: #a9c2ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, .10); }
+    .search .ic { position: absolute; left: 13px; top: 11px; color: var(--muted); }
+    .search .clear {
+      position: absolute; right: 7px; top: 6px; width: 31px; height: 31px;
+      border: 0; border-radius: 9px; background: transparent; color: #94a3b8; font-size: 18px;
+      display: none;
+    }
+    .filters {
+      display: flex; gap: 7px; overflow: visible; flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .filter {
+      flex: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #53637a;
+      padding: 7px 11px;
+      font-size: 12.5px;
+      font-weight: 650;
+    }
+    .filter.on { border-color: #b9ccff; background: var(--blue-soft); color: var(--blue); }
+    .summary {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      flex-wrap: wrap; row-gap: 3px;
+      padding: 2px 12px 10px; color: var(--muted); font-size: 12px;
+    }
+    .summary b { color: var(--ink); font-size: 13px; }
+    .cards { display: grid; gap: 10px; }
+    .sr-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr) min(256px, 61%);
+      align-items: start;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid rgba(224, 230, 240, .95);
+      border-radius: 17px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: transform .12s ease, border-color .12s ease;
+      /* 长列表只渲染视口附近的卡片，减少手机首次打开和滚动时的绘制压力 */
+      content-visibility: auto;
+      contain-intrinsic-size: auto 117px;
+    }
+    .sr-card:active { transform: scale(.992); border-color: #bfcff5; }
+    .rank {
+      position: absolute; left: 0; top: 0;
+      min-width: 29px; height: 22px; padding: 0 7px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 0 0 11px 0;
+      background: #edf2ff; color: #4663a6; font-size: 10.5px; font-weight: 800;
+    }
+    .pic-box {
+      width: 62px; height: 62px; border-radius: 11px; overflow: hidden;
+      border: 1px solid #e2e8f0; background:
+        repeating-linear-gradient(45deg, #f8fafc, #f8fafc 7px, #eef2f7 7px, #eef2f7 14px);
+      align-self: start;
+    }
+    .pic-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pic-fallback {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      color: #a8b3c4; font-size: 9px; text-align: center; line-height: 1.3;
+    }
+    .head { min-width: 0; align-self: center; }
+    .code {
+      font-size: 15px;
+      line-height: 1.2;
+      font-weight: 850;
+      letter-spacing: -.3px;
+      overflow-wrap: anywhere;
+    }
+    .alias {
+      margin-top: 2px; color: var(--muted); font-size: 10.5px; line-height: 1.3;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .tag {
+      display: inline-flex; align-items: center;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 750;
+      background: #f1f5f9; color: #526176;
+    }
+    .tag.red { background: var(--red-soft); color: var(--red); }
+    .tag.orange { background: var(--orange-soft); color: var(--orange); }
+    .tag.yellow { background: var(--yellow-soft); color: var(--yellow); }
+    .tag.green { background: var(--green-soft); color: var(--green); }
+    .tag.ship { background: #eef2ff; color: #4a5da8; }
+    .sizes {
+      align-self: center;
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 3px;
+    }
+    .size {
+      min-width: 0;
+      padding: 5px 1px 4px;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      text-align: center;
+      border: 1px solid #e8edf5;
+      border-radius: 9px;
+      background: #fbfcff;
+    }
+    .size-s { font-size: 13.5px; font-weight: 850; color: #334155; letter-spacing: -.2px; }
+    .size-n { margin-top: 1px; font-size: 9px; color: #7c8aa0; white-space: nowrap; }
+    .size-stock { margin-top: 2px; font-size: 10.5px; font-weight: 800; color: #475569; white-space: nowrap; }
+    .size-stock.zero { color: var(--red); }
+    .size-stock.low { color: var(--orange); }
+    .size-stock.neg { color: #fff; background: var(--red); border-radius: 5px; }
+    .size-plan { margin-top: 2px; font-size: 9.5px; color: #d97706; font-weight: 800; min-height: 12px; }
+    .more {
+      grid-column: 1 / -1;
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 4px -10px -10px; padding: 7px 12px 8px;
+      border-top: 1px solid #eef2f7;
+      color: #718096; font-size: 10.5px; background: #fcfdff;
+    }
+    .more strong { color: var(--blue); font-size: 11px; }
+    .more b { color: var(--ink); font-size: 11.5px; }
+    .load-more-wrap { padding: 2px 12px 0; }
+    .load-more-wrap[hidden] { display: none; }
+    .load-more {
+      width: 100%; min-height: 44px; padding: 10px 14px;
+      border: 1px solid #d9e3f4; border-radius: 14px;
+      background: #fff; color: var(--blue); font-weight: 800;
+      box-shadow: 0 5px 18px rgba(34, 51, 84, .05);
+    }
+    .load-more small { margin-left: 5px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .to-top {
+      position: fixed; right: max(14px, calc((100vw - var(--phone-width)) / 2 + 14px));
+      bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px)); z-index: 50;
+      width: 42px; height: 42px; padding: 0;
+      display: none; align-items: center; justify-content: center;
+      border: 1px solid rgba(37, 99, 235, .18); border-radius: 50%;
+      background: rgba(255, 255, 255, .94); color: var(--blue);
+      font-size: 20px; font-weight: 850; box-shadow: 0 8px 24px rgba(34, 51, 84, .16);
+      backdrop-filter: blur(12px);
+    }
+    .to-top.show { display: flex; }
+    @media (max-width: 374px) {
+      .sizes { gap: 2px; }
+      .size-s { font-size: 10px; }
+      .size-n, .size-stock, .size-plan { font-size: 8.5px; }
+    }
+    .empty {
+      padding: 46px 20px; text-align: center; color: var(--muted);
+      background: #fff; border-radius: 17px; border: 1px solid var(--line);
+      margin: 0 12px;
+    }
+    .empty .big { font-size: 34px; margin-bottom: 8px; }
+    /* 同步库存时保持内容清晰；状态由顶部文字和刷新按钮反馈，避免整块卡片蒙雾。 */
+    .loading { cursor: progress; }
+    .sheet-wrap {
+      position: fixed; inset: 0; z-index: 100;
+      display: none;
+      align-items: flex-end; justify-content: center;
+      background: rgba(15, 23, 42, .42);
+      backdrop-filter: blur(3px);
+    }
+    .sheet-wrap.open { display: flex; }
+    .sheet {
+      width: min(100%, 760px);
+      max-height: 92vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 22px 22px 0 0;
+      padding: 8px 16px max(22px, env(safe-area-inset-bottom));
+      box-shadow: 0 -16px 50px rgba(15, 23, 42, .22);
+      animation: sheetIn .18s ease-out;
+    }
+    @keyframes sheetIn { from { transform: translateY(30px); opacity: .7; } }
+    .grab { width: 38px; height: 4px; border-radius: 4px; background: #d8dee9; margin: 2px auto 13px; }
+    .sheet-head { display: grid; grid-template-columns: 78px minmax(0, 1fr) 36px; gap: 12px; align-items: start; }
+    .sheet-pic { width: 78px; height: 78px; border-radius: 13px; overflow: hidden; border: 1px solid var(--line); background: #f8fafc; }
+    .sheet-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .sheet-code { font-size: 22px; font-weight: 850; line-height: 1.2; overflow-wrap: anywhere; }
+    .sheet-alias { margin-top: 5px; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+    .sheet-close {
+      width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 11px;
+      background: #fff; color: #64748b; font-size: 20px;
+    }
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px; margin-top: 15px;
+    }
+    .stat {
+      min-width: 0; padding: 9px 8px; border-radius: 11px; background: #f7f9fc; border: 1px solid #edf1f7;
+    }
+    .stat-l { color: #8491a5; font-size: 10.5px; white-space: nowrap; }
+    .stat-v { margin-top: 4px; font-size: 15px; font-weight: 850; overflow-wrap: anywhere; }
+    .stat-v.money { color: var(--blue); }
+    .section { margin-top: 18px; }
+    .section-h {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin-bottom: 8px;
+    }
+    .section-h h2 { margin: 0; font-size: 15px; }
+    .section-h span { color: var(--muted); font-size: 11px; }
+    .size-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+    .size-table th { padding: 7px 3px; background: #f4f7fb; color: #728097; font-size: 10.5px; font-weight: 700; }
+    .size-table th:first-child { border-radius: 9px 0 0 9px; }
+    .size-table th:last-child { border-radius: 0 9px 9px 0; }
+    .size-table td {
+      padding: 9px 3px; border-bottom: 1px solid #edf1f7; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .size-table td:first-child { font-weight: 850; color: #334155; }
+    .size-table .stock-zero { color: var(--red); font-weight: 850; }
+    .size-table .stock-low { color: var(--orange); font-weight: 850; }
+    .size-table .plan { color: var(--orange); font-weight: 850; }
+    /* 【2026-11-14·老板要求】补单数量可直接微调，复制清单按填写后的数字生成 */
+    .size-table .plan-cell { padding: 5px 2px; }
+    .plan-input {
+      width: 42px; height: 30px; padding: 0 4px; box-sizing: border-box;
+      border: 1px solid #d9e2f0; border-radius: 8px; outline: 0;
+      color: #b45f06; background: #fffaf0; text-align: center;
+      font: 850 13px/28px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums; touch-action: manipulation;
+    }
+    .plan-input:focus { border-color: #2f6df6; background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    .plan-input.changed { color: #fff; border-color: #d97706; background: #e88a17; }
+    .plan-reset {
+      display: inline-flex; align-items: center; justify-content: center;
+      margin: 9px 0 1px; padding: 5px 10px; border: 1px solid #dbe4f2;
+      border-radius: 8px; color: #526178; background: #fff; font-size: 11px; font-weight: 750;
+    }
+    /* 【2026-11-14·老板要求】加「补后库存」列：库存 + 补单，一眼看到补完每码有多少 */
+    .size-table .after { color: #1f4fd8; font-weight: 850; }
+    .size-table tfoot td {
+      padding: 9px 3px; border-top: 1px solid #e2e8f2; border-bottom: 0;
+      text-align: center; background: #fbfcff; font-weight: 850; color: #334155;
+      font-variant-numeric: tabular-nums;
+    }
+    .size-table tfoot td:first-child { color: #55637a; }
+    .detail-summary {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+    }
+    .metric-pill { padding: 5px 8px; border-radius: 999px; background: #f2f5fa; color: #56657a; font-size: 11px; }
+    .note-box { margin-top: 16px; }
+    .note-box label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--muted); font-weight: 700; }
+    .note-status { font-size: 10px; font-weight: 500; color: var(--muted); }
+    .note-status.ok { color: #15803d; }
+    .note-status.error { color: var(--red); }
+    .note-input {
+      width: 100%; min-height: 44px; padding: 11px 12px;
+      border: 1px solid var(--line); border-radius: 12px; background: #fbfcff; color: var(--ink);
+      outline: none;
+    }
+    .note-input:focus { border-color: #aac3ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, .09); }
+    .order-record-box {
+      margin-top: 12px; padding: 10px 12px;
+      border: 1px solid #dce7f8; border-radius: 12px; background: #f7faff;
+    }
+    .order-record-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .order-record-title { color: #526178; font-size: 12px; font-weight: 750; }
+    .order-record-status { color: #1f4fd8; font-size: 12.5px; font-weight: 850; }
+    .order-record-time { margin-top: 5px; color: #8491a5; font-size: 10.5px; line-height: 1.5; }
+    .order-record-list {
+      display: grid; gap: 8px; margin-top: 8px; max-height: 300px;
+      overflow-y: auto; overscroll-behavior: contain;
+    }
+    .order-record-item { padding: 9px 10px; border: 1px solid #e2eaf6; border-radius: 10px; background: #fff; }
+    .order-record-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .order-record-item-meta { color: #64748b; font-size: 11px; font-weight: 700; }
+    .order-record-item-meta b { margin-left: 6px; color: #1f4fd8; font-size: 12px; }
+    .order-record-item-actions { display: flex; gap: 5px; }
+    .order-record-btn {
+      min-height: 28px; padding: 4px 8px; border: 1px solid #d8e3f4; border-radius: 8px;
+      background: #f8fbff; color: #315589; font-size: 10.5px; font-weight: 750;
+    }
+    .order-record-btn.danger { border-color: #f2d0d0; background: #fff7f7; color: #b42318; }
+    .order-record-text {
+      margin: 7px 0 0; padding: 8px 9px; border-radius: 8px; background: #f8fafc;
+      color: #334155; font: 11px/1.65 "SFMono-Regular", Consolas, "Microsoft YaHei", monospace;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .sheet-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .btn {
+      min-height: 43px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line);
+      background: #fff; color: #475569; font-weight: 750;
+    }
+    .btn.primary { flex: 1; border-color: var(--blue); background: var(--blue); color: #fff; }
+    .btn:disabled { opacity: .45; }
+    .toast {
+      position: fixed; left: 50%; bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
+      z-index: 200; transform: translate(-50%, 16px);
+      max-width: calc(100vw - 32px);
+      padding: 9px 13px; border-radius: 11px;
+      background: #172033; color: #fff; font-size: 12.5px; box-shadow: 0 12px 30px rgba(15,23,42,.25);
+      opacity: 0; pointer-events: none; transition: .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    @media (min-width: 560px) {
+      .hero { padding-left: 16px; padding-right: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div class="hero-row">
+        <div>
+          <h1>销售排行</h1>
+          <div class="hero-sub" id="updated">正在连接实时数据…</div>
+        </div>
+        <div class="hero-actions">
+          <span class="live-dot" title="实时数据"></span>
+          <button class="icon-btn" id="refresh" title="刷新">⟳</button>
+        </div>
+      </div>
+      <div class="search">
+        <span class="ic">⌕</span>
+        <input id="q" type="search" autocomplete="off" placeholder="搜索货号">
+        <button class="clear" id="clear" aria-label="清空搜索">×</button>
+      </div>
+      <div class="filters" id="filters">
+        <button class="filter on" data-filter="all">全部</button>
+        <button class="filter" data-filter="warn">库存预警</button>
+        <button class="filter" data-filter="need">需补货</button>
+        <button class="filter" data-filter="todo">需处理</button>
+      </div>
+    </header>
+
+    <div class="summary">
+      <span>共 <b id="count">0</b> 款 · 已显示 <b id="visibleCount">0</b></span>
+      <span id="sortNote">按桌面版销售排行顺序</span>
+    </div>
+    <section class="cards" id="cards"></section>
+    <div class="load-more-wrap" id="loadMoreWrap" hidden>
+      <button class="load-more" id="loadMore" type="button">再显示 20 款</button>
+    </div>
+  </main>
+  <button class="to-top" id="toTop" type="button" aria-label="回到顶部">↑</button>
+
+  <div class="sheet-wrap" id="sheetWrap" aria-hidden="true">
+    <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="款式详情"></section>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // 2026-11-14 手机同 WiFi 访问：走 8790 的同源代理（8123 只绑本机，手机直连不到；同源也省掉跨域）
+    const STATIC_SNAPSHOT = window.__SHIPSTATIC_STATIC__ === true;
+    const API = '/svc8123/api/dashboard';
+    const REFRESH_API = '/svc8123/api/restock/refresh';
+    // 库存快照超过 5 分钟就自动同步；自动同步每 10 分钟最多触发一次，避免频繁拉快麦触发限流。
+    const AUTO_SYNC_STALE_MS = 5 * 60 * 1000;
+    const AUTO_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+    // 2026-11-14 老板点名：快麦里这几条是占位脏数据（无主图/已断货/库存 0），按「未备货」处理直接过滤
+    const JUNK_NORESTOCK = new Set(['古8', '20197', '古穆齐', '20278坦克', 'GMQ02']);
+    const NOTE_KEY = 'zs_sr_note_v1';
+    const NOTE_PENDING_KEY = 'zs_sr_note_pending_v1';
+    const NOTE_MIGRATED_KEY = 'zs_sr_note_migrated_v1';
+    const TODO_KEY = 'zs_sr_todo_manual_v1';
+    const ORDER_KEY = 'zs_sr_order_v1';
+    const ORDER_RECORDS_API = '/svc8123/api/restock/order-records';
+    const ORDER_RECORD_API = '/svc8123/api/restock/order-record';
+    const RESTOCK_NOTES_API = '/svc8123/api/restock/notes';
+    const RESTOCK_NOTE_API = '/svc8123/api/restock/note';
+    const SYNC_ENDPOINT_LOOKUP = 'https://api.github.com/repos/3072863/3072863/contents/sales-rank-endpoint.json?ref=main';
+    const API_BASE_KEY = 'zs_sr_api_base_v1';
+    const ORDER_TTL_MS = 30 * 86400000;
+    const PAGE_SIZE = 20;
+    const DAYS_RED = 10, DAYS_ORANGE = 18, DAYS_YELLOW = 30, MIN_STOCK = 10;
+
+    let allItems = [];
+    let latestDashboard = null;
+    let inventorySyncing = false;
+    let lastAutoSyncAttempt = 0;
+    let filteredItems = [];
+    let currentFilter = 'all';
+    let currentCode = '';
+    let loading = false;
+    let lastDashboardStatus = '正在连接实时数据…';
+    let visibleLimit = PAGE_SIZE;
+    let lastFilterKey = '';
+    const planOverrides = Object.create(null);
+    let orderRecords = readJson(ORDER_KEY, {});
+    let noteSyncTimer = null;
+    let apiBase = '';
+    let syncEnabled = !STATIC_SNAPSHOT;
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+    const num = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const fmtInt = (value) => Math.round(num(value)).toLocaleString('zh-CN');
+    const fmtMoney = (value) => num(value) > 0
+      ? '¥' + (Math.round(num(value) * 100) / 100).toLocaleString('zh-CN')
+      : '—';
+    const fmtDate = (value) => String(value || '—');
+
+    function readJson(key, fallback) {
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || 'null');
+        return value && typeof value === 'object' ? value : fallback;
+      } catch (error) {
+        return fallback;
+      }
+    }
+
+    function saveJson(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) {}
+    }
+
+    function warnOf(s30, stock) {
+      if (!(s30 > 0)) return { text: '暂无销量', level: '' };
+      const days = stock / (s30 / 30);
+      const rounded = Math.round(days);
+      if (days <= 0) return { text: '已断货', level: 'red' };
+      if (days < DAYS_RED) return { text: '仅够 ' + rounded + ' 天', level: 'red' };
+      if (days < DAYS_ORANGE) return { text: '偏紧 ' + rounded + ' 天', level: 'orange' };
+      if (days < DAYS_YELLOW) return { text: '关注 ' + rounded + ' 天', level: 'yellow' };
+      if (stock <= MIN_STOCK) return { text: '仅剩 ' + stock + ' 双', level: 'yellow' };
+      return { text: '可卖 ' + rounded + ' 天', level: '' };
+    }
+
+    function parseItems(sr) {
+      const cols = Array.isArray(sr && sr.cols) ? sr.cols : [];
+      const iCode = cols.indexOf('货号');
+      const i30 = cols.indexOf('近30天发货');
+      const iStock = cols.indexOf('仓库库存');
+      const iRate = cols.findIndex((name) => String(name).includes('退货率'));
+      const unsafe = new Set((sr && sr.norestock || []).map(String));
+      const alias = (sr && sr.alias) || {};
+      const pics = (sr && sr.pics) || {};
+      const chart = (sr && sr.chart) || {};
+      const rows = Array.isArray(sr && sr.rows) ? sr.rows : [];
+
+      const items = [];
+      let hiddenNamedNorestock = 0;
+      rows.forEach((row) => {
+        const code = String(row[iCode] ?? '').trim();
+        const display = unsafe.has(code) && alias[code] ? String(alias[code]) : code;
+        const productName = String(alias[code] || display || code);
+        const soldOutNoRestock = [code, display, productName]
+          .some(name => String(name || '').includes('卖完不补货'));
+        // 商品名称含「未备货」的款直接从手机榜过滤（例：古穆奇 20283-未备货）。
+        const junkNorestock = JUNK_NORESTOCK.has(code) || JUNK_NORESTOCK.has(String(alias[code] || ''));
+        if (junkNorestock || [code, display, alias[code]].some(name => String(name || '').includes('未备货'))) {
+          hiddenNamedNorestock += 1;
+          return;
+        }
+        const s30 = num(row[i30]);
+        const stock = num(row[iStock]);
+        const rate = row[iRate] == null || row[iRate] === '' ? null : num(row[iRate]);
+        const cost = iRate >= 0 ? num(row[iRate + 1]) : 0;
+        const created = iRate >= 0 ? row[iRate + 2] : '';
+        const ch = chart[code] || null;
+        items.push({
+          code,
+          display,
+          productName,
+          soldOutNoRestock,
+          pic: pics[code] || pics[display] || '',
+          s30,
+          stock,
+          rate,
+          cost,
+          created,
+          totalAmount: cost > 0 && stock > 0 ? stock * cost : 0,
+          warn: warnOf(s30, stock),
+          chart: ch,
+          plan: ch && Array.isArray(ch.sizes)
+            ? ch.sizes.reduce((sum, size) => sum + num(size.plan), 0)
+            : num(ch && ch.plan),
+          rank: items.length + 1,
+        });
+      });
+      return { items, hiddenNamedNorestock };
+    }
+
+    function picHtml(item, cls = '') {
+      if (!item.pic) return '<div class="pic-fallback">暂无<br>主图</div>';
+      return '<img class="' + esc(cls) + '" src="' + esc(item.pic) + '" alt="' + esc(item.display) +
+        '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.innerHTML=\'<div class=&quot;pic-fallback&quot;>暂无<br>主图</div>\'">';
+    }
+
+    function sizeGridHtml(item) {
+      const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
+      if (!sizes.length) return '<div class="empty" style="grid-column:1/-1;padding:10px">暂无尺码数据</div>';
+      return sizes.map((size) => {
+        const stock = num(size.stock);
+        const stockClass = stock < 0 ? 'neg' : (stock === 0 ? 'zero' : (stock <= 3 ? 'low' : ''));
+        const plan = num(size.plan);
+        return '<div class="size">' +
+          '<div class="size-s">' + esc(size.s) + '</div>' +
+          '<div class="size-stock ' + stockClass + '">' + fmtInt(stock) + '</div>' +
+          '<div class="size-plan">' + (plan > 0 ? '补 ' + fmtInt(plan) : '') + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function matchesFilter(item) {
+      if ((currentFilter === 'warn' || currentFilter === 'need') && item.soldOutNoRestock) return false;
+      if (currentFilter === 'warn') return !!item.warn.level;
+      if (currentFilter === 'need') return !!item.warn.level && planTotalOf(item) > 0;
+      if (currentFilter === 'todo') {
+        const marks = readJson(TODO_KEY, {});
+        return Object.prototype.hasOwnProperty.call(marks, item.code);
+      }
+      return true;
+    }
+
+    function applyFilter() {
+      const query = $('q').value.trim().toLowerCase();
+      $('clear').style.display = query ? 'block' : 'none';
+      const filterKey = currentFilter + '\n' + query;
+      if (filterKey !== lastFilterKey) {
+        visibleLimit = PAGE_SIZE;
+        lastFilterKey = filterKey;
+      }
+      filteredItems = allItems.filter((item) => {
+        if (!matchesFilter(item)) return false;
+        if (!query) return true;
+        return item.code.toLowerCase().includes(query) || item.display.toLowerCase().includes(query);
+      });
+      renderCards();
+    }
+
+    function renderCards() {
+      $('count').textContent = filteredItems.length;
+      const box = $('cards');
+      box.classList.toggle('loading', loading);
+      if (!filteredItems.length) {
+        $('visibleCount').textContent = '0';
+        $('loadMoreWrap').hidden = true;
+        box.innerHTML = '<div class="empty"><div class="big">🔍</div>没有符合条件的款式</div>';
+        return;
+      }
+      const visibleItems = filteredItems.slice(0, visibleLimit);
+      const remaining = Math.max(0, filteredItems.length - visibleItems.length);
+      $('visibleCount').textContent = visibleItems.length;
+      $('loadMoreWrap').hidden = remaining === 0;
+      if (remaining > 0) {
+        $('loadMore').innerHTML = '再显示 ' + Math.min(PAGE_SIZE, remaining) + ' 款' +
+          '<small>还剩 ' + remaining + ' 款</small>';
+      }
+      box.innerHTML = visibleItems.map((item) => {
+        const warnTag = item.warn.level
+          ? '<span class="tag ' + esc(item.warn.level) + '">' + esc(item.warn.text) + '</span>'
+          : '<span class="tag green">' + esc(item.warn.text) + '</span>';
+        const alias = item.display !== item.code
+          ? '<div class="alias">' + esc(item.display) + '</div>'
+          : '';
+        const adjustedPlan = planTotalOf(item);
+        const planTag = adjustedPlan > 0
+          ? '<span class="tag orange">计划补单 ' + fmtInt(adjustedPlan) + '</span>'
+          : '';
+        const orderRecord = orderRecordOf(item.code);
+        const orderTag = orderRecord
+          ? '<span class="tag green">工厂已记单 ' + fmtInt(orderRecord.q) + ' 双</span>'
+          : '';
+        const shipTag = '<span class="tag ship">30天已发 ' + fmtInt(item.s30) + ' 双</span>';
+        return '<article class="sr-card" data-code="' + esc(item.code) + '" tabindex="0" role="button" aria-label="查看 ' + esc(item.code) + ' 详情">' +
+          '<div class="rank">#' + item.rank + '</div>' +
+          '<div class="pic-box">' + picHtml(item) + '</div>' +
+          '<div class="head"><div class="code">' + esc(item.code) + '</div>' + alias +
+            '<div class="tag-row">' + shipTag + warnTag + planTag + orderTag + '</div>' +
+          '</div>' +
+          '<div class="sizes">' + sizeGridHtml(item) + '</div>' +
+          '<div class="more"><span>总库存 <b>' + fmtInt(item.stock) + ' 双</b> · 补 = 计划补单</span><strong>点开看全部 ›</strong></div>' +
+        '</article>';
+      }).join('');
+    }
+
+    function noteOf(code) {
+      return String(readJson(NOTE_KEY, {})[code] || '');
+    }
+
+    function serviceUrl(path) {
+      return apiBase ? apiBase + path : path;
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function decodeBase64Utf8(value) {
+      const binary = atob(String(value || '').replace(/\s/g, ''));
+      const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    async function checkApiBase(base) {
+      if (!/^https:\/\/[^/]+/i.test(base)) return false;
+      try {
+        const response = await fetchWithTimeout(base + '/svc8123/health', { cache: 'no-store' }, 6000);
+        return response.ok;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function resolveSyncBase() {
+      if (!STATIC_SNAPSHOT) {
+        syncEnabled = true;
+        return;
+      }
+      const candidates = [];
+      const cached = String(localStorage.getItem(API_BASE_KEY) || '').replace(/\/+$/, '');
+      if (cached) candidates.push(cached);
+      try {
+        const response = await fetchWithTimeout(SYNC_ENDPOINT_LOOKUP, {
+          cache: 'no-store',
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        const endpoint = JSON.parse(decodeBase64Utf8(result.content || ''));
+        const remote = String(endpoint.api_base || '').replace(/\/+$/, '');
+        if (remote && !candidates.includes(remote)) candidates.push(remote);
+      } catch (error) {}
+      for (const candidate of candidates) {
+        if (await checkApiBase(candidate)) {
+          apiBase = candidate;
+          syncEnabled = true;
+          localStorage.setItem(API_BASE_KEY, candidate);
+          return;
+        }
+      }
+      apiBase = '';
+      syncEnabled = false;
+    }
+
+    function noteStatus(message, state = '') {
+      const node = $('noteStatus');
+      if (!node) return;
+      node.textContent = message;
+      node.className = 'note-status' + (state ? ' ' + state : '');
+    }
+
+    function setPendingNote(code, text) {
+      const pending = readJson(NOTE_PENDING_KEY, {});
+      if (text) pending[code] = text;
+      else delete pending[code];
+      saveJson(NOTE_PENDING_KEY, pending);
+    }
+
+    async function postRestockNote(code, text) {
+        const response = await fetch(serviceUrl(RESTOCK_NOTE_API), {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, text }),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const result = await response.json();
+      if (!result || result.success === false) {
+        throw new Error(result && result.msg || '保存给工厂备注失败');
+      }
+      setPendingNote(code, '');
+      return String(result.text || '');
+    }
+
+    function queueRestockNote(code, text) {
+      if (!syncEnabled) {
+        noteStatus('共享服务暂不可用：仅本机', 'error');
+        return;
+      }
+      setPendingNote(code, text);
+      noteStatus('正在同步…');
+      clearTimeout(noteSyncTimer);
+      noteSyncTimer = setTimeout(async () => {
+        try {
+          await postRestockNote(code, text);
+          if (currentCode === code) noteStatus('已同步到服务器', 'ok');
+        } catch (error) {
+          if (currentCode === code) noteStatus('服务器暂不可用，已留在本机', 'error');
+        }
+      }, 350);
+    }
+
+    async function fetchRestockNotes() {
+      const local = readJson(NOTE_KEY, {});
+      if (!syncEnabled) return local;
+      try {
+        const response = await fetch(serviceUrl(RESTOCK_NOTES_API), { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        if (!result || result.success === false) {
+          throw new Error(result && result.msg || '读取给工厂备注失败');
+        }
+        const remote = result.notes && typeof result.notes === 'object' ? result.notes : {};
+        const pending = readJson(NOTE_PENDING_KEY, {});
+        const source = result.initialized === false ? local : remote;
+        const notes = {};
+        Object.entries(source).forEach(([code, value]) => {
+          const text = String(value || '').trim().slice(0, 1000);
+          if (code && text) notes[code] = text;
+        });
+        const needsMigration = localStorage.getItem(NOTE_MIGRATED_KEY) !== '1';
+        if (result.initialized === false || needsMigration) {
+          Object.keys(local).forEach((code) => setPendingNote(code, String(local[code] || '')));
+          localStorage.setItem(NOTE_MIGRATED_KEY, '1');
+        } else {
+          Object.entries(pending).forEach(([code, value]) => {
+            const text = String(value || '').trim().slice(0, 1000);
+            if (code && text) notes[code] = text;
+          });
+        }
+        saveJson(NOTE_KEY, notes);
+        Object.entries(readJson(NOTE_PENDING_KEY, {})).forEach(([code, text]) => {
+          postRestockNote(code, text).catch(() => {});
+        });
+        return notes;
+      } catch (error) {
+        return local;
+      }
+    }
+
+    function orderTimeText(timestamp) {
+      const date = new Date(num(timestamp));
+      const pad = (value) => String(value).padStart(2, '0');
+      return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+        ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+    }
+
+    function normaliseOrderSizes(sizes) {
+      const out = [];
+      const seen = new Set();
+      (Array.isArray(sizes) ? sizes : []).forEach((item) => {
+        const size = String(item && (item.s || item.size) || '').trim();
+        const qty = Math.round(num(item && (item.q ?? item.plan)));
+        if (size && qty > 0 && !seen.has(size)) {
+          seen.add(size);
+          out.push({ s: size, q: qty });
+        }
+      });
+      return out;
+    }
+
+    function orderEntryText(code, entry) {
+      if (entry && entry.text) return String(entry.text);
+      const lines = [new Date(num(entry && entry.t) || Date.now()).toLocaleDateString('zh-CN')];
+      if (entry && entry.note) lines.push('给工厂备注：' + entry.note);
+      lines.push('下单货号：' + code + '（合计 ' + fmtInt(entry && entry.q) + '双）');
+      (entry && entry.sizes || []).forEach((size) => {
+        lines.push(size.s + '码 ' + fmtInt(size.q) + '双');
+      });
+      return lines.join('\n');
+    }
+
+    function normaliseOrderEntry(raw) {
+      if (!raw || typeof raw !== 'object') return null;
+      const q = Math.round(num(raw.q));
+      const t = Math.round(num(raw.t));
+      if (!(q > 0) || !(t > 0)) return null;
+      return {
+        id: String(raw.id || ('legacy-' + t + '-' + q)),
+        q,
+        t,
+        text: String(raw.text || '').slice(0, 4000),
+        note: String(raw.note || '').slice(0, 300),
+        sizes: normaliseOrderSizes(raw.sizes),
+      };
+    }
+
+    function buildOrderRecord(entries, revision) {
+      const ordered = entries
+        .map(normaliseOrderEntry)
+        .filter(Boolean)
+        .sort((a, b) => a.t - b.t)
+        .slice(-20);
+      if (!ordered.length) {
+        return {
+          q: 0, t: 0, rev: Math.round(num(revision) || Date.now()),
+          text: '', note: '', sizes: [], entries: [],
+        };
+      }
+      const latest = ordered[ordered.length - 1];
+      return {
+        q: latest.q,
+        t: latest.t,
+        rev: Math.max(Math.round(num(revision)), latest.t),
+        text: latest.text,
+        note: latest.note,
+        sizes: latest.sizes,
+        entries: ordered,
+      };
+    }
+
+    function normaliseOrderRecord(value) {
+      if (!value || typeof value !== 'object') return null;
+      let rawEntries = Array.isArray(value.entries) ? value.entries : [];
+      if (!rawEntries.length && num(value.q) > 0 && num(value.t) > 0) rawEntries = [value];
+      const entries = rawEntries.map(normaliseOrderEntry).filter(Boolean);
+      const revision = Math.round(num(value.rev) || num(value.t));
+      if (entries.length) return buildOrderRecord(entries, revision);
+      if (revision > 0) return buildOrderRecord([], revision);
+      return null;
+    }
+
+    function orderRecordValue(code) {
+      return normaliseOrderRecord(orderRecords[String(code || '').trim()]);
+    }
+
+    function orderEntriesOf(code) {
+      const record = orderRecordValue(code);
+      if (!record) return [];
+      return record.entries
+        .filter((entry) => Date.now() - entry.t <= ORDER_TTL_MS)
+        .sort((a, b) => a.t - b.t);
+    }
+
+    function orderRecordOf(code) {
+      const entries = orderEntriesOf(code);
+      if (!entries.length) return null;
+      return buildOrderRecord(entries, entries[entries.length - 1].t);
+    }
+
+    function orderOf(code) {
+      const record = orderRecordOf(code);
+      return record ? record.q : 0;
+    }
+
+    function mergeOrderRecords(remote) {
+      const merged = { ...orderRecords };
+      const pendingUpload = [];
+      const pendingDelete = [];
+      const now = Date.now();
+      Object.entries(remote || {}).forEach(([code, value]) => {
+        const key = String(code || '').trim();
+        const record = normaliseOrderRecord(value);
+        if (!key || !record) return;
+        const current = normaliseOrderRecord(merged[key]);
+        if (!current || record.rev >= current.rev) merged[key] = record;
+      });
+      Object.entries(merged).forEach(([code, value]) => {
+        const record = normaliseOrderRecord(value);
+        if (!record || !(record.rev > 0) || now - record.rev > ORDER_TTL_MS) {
+          delete merged[code];
+          return;
+        }
+        const serverRecord = normaliseOrderRecord(remote && remote[code]);
+        if (!serverRecord || record.rev > serverRecord.rev) {
+          if (record.entries.length) {
+            pendingUpload.push({ code, entry: record.entries[record.entries.length - 1] });
+          } else {
+            pendingDelete.push(code);
+          }
+        }
+      });
+      orderRecords = merged;
+      saveJson(ORDER_KEY, orderRecords);
+      pendingUpload.forEach((payload) => postOrderRecord(payload).catch(() => {}));
+      pendingDelete.forEach((code) => deleteOrderRecordRemote(code).catch(() => {}));
+    }
+
+    async function fetchOrderRecords() {
+      if (!syncEnabled) return orderRecords;
+      try {
+        const response = await fetch(serviceUrl(ORDER_RECORDS_API), { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        if (!result || result.success === false) throw new Error(result && result.msg || '读取补货记录失败');
+        mergeOrderRecords(result.records);
+      } catch (error) {
+        // 8123 暂时不可用时保留本机兜底记录，不阻塞销售榜显示。
+      }
+      return orderRecords;
+    }
+
+    async function postOrderRecord(payload) {
+      const response = await fetch(serviceUrl(ORDER_RECORD_API), {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const result = await response.json();
+      if (!result || result.success === false) throw new Error(result && result.msg || '保存补货记录失败');
+      return normaliseOrderRecord(result.record);
+    }
+
+    function saveOrderRecordLocal(code, total, details) {
+      const key = String(code || '').trim();
+      if (!key || !(total > 0)) return null;
+      const stamp = Date.now();
+      const entry = normaliseOrderEntry({
+        id: stamp + '-' + String(Math.floor(Math.random() * 1000000)).padStart(6, '0'),
+        q: total,
+        t: stamp,
+        text: details && details.text,
+        note: details && details.note,
+        sizes: details && details.sizes,
+      });
+      const entries = [...orderEntriesOf(key), entry];
+      const record = buildOrderRecord(entries, stamp);
+      orderRecords[key] = record;
+      saveJson(ORDER_KEY, orderRecords);
+      return { record, entry };
+    }
+
+    async function saveOrderRecord(code, total, details) {
+      const local = saveOrderRecordLocal(code, total, details);
+      if (!local) return null;
+      if (!syncEnabled) return local.record;
+      const serverRecord = await postOrderRecord({ code, entry: local.entry });
+      if (serverRecord) orderRecords[code] = serverRecord;
+      saveJson(ORDER_KEY, orderRecords);
+      return serverRecord || local.record;
+    }
+
+    async function deleteOrderRecordRemote(code, entryId = '') {
+      if (!syncEnabled) return orderRecords[code] || null;
+      const serverRecord = await postOrderRecord({
+        code,
+        action: 'delete_entry',
+        entry_id: entryId,
+      });
+      if (serverRecord) orderRecords[code] = serverRecord;
+      else orderRecords[code] = buildOrderRecord([], Date.now());
+      saveJson(ORDER_KEY, orderRecords);
+      return orderRecords[code];
+    }
+
+    async function deleteOrderRecordEntry(code, entryId) {
+      const key = String(code || '').trim();
+      const entry = orderEntriesOf(key).find((item) => item.id === entryId);
+      if (!entry) return null;
+      const record = buildOrderRecord(
+        orderEntriesOf(key).filter((item) => item.id !== entryId),
+        Date.now(),
+      );
+      orderRecords[key] = record;
+      saveJson(ORDER_KEY, orderRecords);
+      return deleteOrderRecordRemote(key, entryId);
+    }
+
+    function orderRecordBoxHtml(code) {
+      const entries = orderEntriesOf(code).slice().reverse();
+      const latest = entries[0] || null;
+      const status = latest
+        ? '共 ' + entries.length + ' 次 · 最近 ' + fmtInt(latest.q) + ' 双'
+        : '暂无记录';
+      const body = entries.length
+        ? '<div class="order-record-list">' + entries.map((entry) => (
+            '<div class="order-record-item" data-order-id="' + esc(entry.id) + '">' +
+              '<div class="order-record-item-head">' +
+                '<div class="order-record-item-meta">' + esc(orderTimeText(entry.t)) +
+                  '<b>' + fmtInt(entry.q) + ' 双</b></div>' +
+                '<div class="order-record-item-actions">' +
+                  '<button type="button" class="order-record-btn" data-order-copy="1">复制</button>' +
+                  '<button type="button" class="order-record-btn danger" data-order-delete="1">删除</button>' +
+                '</div>' +
+              '</div>' +
+              '<pre class="order-record-text">' + esc(orderEntryText(code, entry)) + '</pre>' +
+            '</div>'
+          )).join('') + '</div>'
+        : '<div class="order-record-time">工厂补货记录会在大货入库后自动消除；未入库的记录 30 天后自动清空。</div>';
+      return '<div class="order-record-box" id="orderRecordBox">' +
+        '<div class="order-record-top">' +
+          '<span class="order-record-title">工厂补货记录</span>' +
+          '<strong class="order-record-status" id="orderRecordStatus">' + esc(status) + '</strong>' +
+        '</div>' + body +
+      '</div>';
+    }
+
+    function bindOrderRecordBox(code) {
+      const box = $('orderRecordBox');
+      if (!box) return;
+      box.querySelectorAll('.order-record-item').forEach((node) => {
+        const entryId = node.dataset.orderId;
+        const entry = orderEntriesOf(code).find((item) => item.id === entryId);
+        const copyBtn = node.querySelector('[data-order-copy]');
+        const deleteBtn = node.querySelector('[data-order-delete]');
+        if (copyBtn && entry) {
+          copyBtn.addEventListener('click', () => {
+            copyTextToClipboard(orderEntryText(code, entry))
+              .then(() => showToast('已复制这条补货记录'))
+              .catch(() => showToast('复制失败，请长按记录文字手动复制'));
+          });
+        }
+        if (deleteBtn && entry) {
+          deleteBtn.addEventListener('click', async () => {
+            if (!window.confirm('确定删除这条补货记录吗？\n\n' + orderEntryText(code, entry))) return;
+            deleteBtn.disabled = true;
+            try {
+              await deleteOrderRecordEntry(code, entryId);
+              refreshOrderRecordBox(code);
+              renderCards();
+              showToast('已删除这条补货记录');
+            } catch (error) {
+              deleteBtn.disabled = false;
+              showToast('删除失败，请稍后重试');
+            }
+          });
+        }
+      });
+    }
+
+    function refreshOrderRecordBox(code) {
+      const box = $('orderRecordBox');
+      if (!box) return;
+      box.outerHTML = orderRecordBoxHtml(code);
+      bindOrderRecordBox(code);
+      requestAnimationFrame(() => {
+        const next = $('orderRecordBox');
+        if (next) next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+
+    function planOverridesOf(code) {
+      const value = planOverrides[code];
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    }
+
+    function planOf(code, size, suggested) {
+      const overrides = planOverridesOf(code);
+      return Object.prototype.hasOwnProperty.call(overrides, size) ? num(overrides[size]) : num(suggested);
+    }
+
+    function planTotalOf(item) {
+      const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
+      const overrides = planOverridesOf(item.code);
+      if (!Object.keys(overrides).length) return num(item.plan);
+      return sizes.reduce((sum, size) => sum + planOf(item.code, String(size.s), size.plan), 0);
+    }
+
+    function savePlanOverride(code, size, value, suggested) {
+      const record = planOverrides[code] && typeof planOverrides[code] === 'object'
+        ? { ...planOverrides[code] }
+        : {};
+      if (num(value) === num(suggested)) delete record[size];
+      else record[size] = Math.max(0, Math.round(num(value)));
+      if (Object.keys(record).length) planOverrides[code] = record;
+      else delete planOverrides[code];
+    }
+
+    function clearPlanOverrides(code) {
+      delete planOverrides[code];
+    }
+
+    function sizeTableHtml(item) {
+      const chart = item.chart;
+      if (!chart || !Array.isArray(chart.sizes) || !chart.sizes.length) {
+        return '<div class="empty" style="padding:18px">暂无尺码数据</div>';
+      }
+      const total = chart.sizes.reduce((sum, size) => sum + num(size.n), 0);
+      const sumStock = chart.sizes.reduce((sum, size) => sum + num(size.stock), 0);
+      const sumPlan = chart.sizes.reduce((sum, size) => sum + planOf(item.code, String(size.s), size.plan), 0);
+      const overrides = planOverridesOf(item.code);
+      const rows = chart.sizes.map((size) => {
+        const stock = num(size.stock);
+        const suggested = num(size.plan);
+        const plan = planOf(item.code, String(size.s), suggested);
+        const changed = Object.prototype.hasOwnProperty.call(overrides, String(size.s));
+        const stockClass = stock < 0 ? 'stock-zero' : (stock === 0 ? 'stock-zero' : (stock <= 3 ? 'stock-low' : ''));
+        const pct = total ? (num(size.n) / total * 100).toFixed(1) + '%' : '—';
+        return '<tr data-size="' + esc(size.s) + '" data-stock="' + stock + '">' +
+          '<td>' + esc(size.s) + '</td>' +
+          '<td>' + fmtInt(size.n) + '</td>' +
+          '<td>' + pct + '</td>' +
+          '<td class="' + stockClass + '">' + fmtInt(stock) + '</td>' +
+          '<td class="plan-cell"><input class="plan-input' + (changed ? ' changed' : '') + '"' +
+            ' data-size="' + esc(size.s) + '" data-base="' + suggested + '" data-stock="' + stock + '"' +
+            ' type="text" inputmode="numeric" pattern="[0-9]*" value="' + plan + '"' +
+            ' aria-label="' + esc(size.s) + '码补单数量"></td>' +
+          '<td class="after" data-after="' + esc(size.s) + '">' + fmtInt(stock + plan) + '</td>' +
+        '</tr>';
+      }).join('');
+      const win = num(chart.win) === 60 ? '近60天' : '近30天';
+      return '<div class="size-table-wrap"><table class="size-table">' +
+        '<thead><tr><th>尺码</th><th>' + win + '</th><th>占比</th><th>库存</th><th>补单</th><th>补后库存</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '<tfoot><tr><td>合计</td><td>' + fmtInt(total) + '</td><td>100%</td><td>' + fmtInt(sumStock) + '</td><td class="plan" id="planTotal">' + fmtInt(sumPlan) + '</td><td class="after" id="afterTotal">' + fmtInt(sumStock + sumPlan) + '</td></tr></tfoot>' +
+      '</table></div>' +
+      (Object.keys(overrides).length ? '<button type="button" class="plan-reset" id="resetPlans">恢复系统建议补单</button>' : '');
+    }
+
+    function openDetail(code) {
+      const item = allItems.find((entry) => entry.code === code);
+      if (!item) return;
+      currentCode = code;
+      const alias = item.display !== item.code
+        ? '<div class="sheet-alias">' + esc(item.display) + '</div>'
+        : '';
+      const warnTag = '<span class="tag ' + esc(item.warn.level || 'green') + '">' + esc(item.warn.text) + '</span>';
+      const adjustedPlan = planTotalOf(item);
+      const planTag = adjustedPlan > 0
+        ? '<span class="tag orange" id="detailPlanTag">计划补单 ' + fmtInt(adjustedPlan) + ' 双</span>'
+        : '<span class="tag orange" id="detailPlanTag" hidden>计划补单 0 双</span>';
+      $('sheet').innerHTML =
+        '<div class="grab"></div>' +
+        '<div class="sheet-head">' +
+          '<div class="sheet-pic">' + picHtml(item) + '</div>' +
+          '<div><div class="sheet-code">' + esc(item.code) + '</div>' + alias +
+            '<div class="tag-row">' + warnTag + planTag + '</div>' +
+          '</div>' +
+          '<button class="sheet-close" data-close="1" aria-label="关闭">×</button>' +
+        '</div>' +
+        '<div class="stat-grid">' +
+          '<div class="stat"><div class="stat-l">近30天发货</div><div class="stat-v">' + fmtInt(item.s30) + ' 双</div></div>' +
+          '<div class="stat"><div class="stat-l">仓库库存</div><div class="stat-v">' + fmtInt(item.stock) + ' 双</div></div>' +
+          '<div class="stat"><div class="stat-l">退货率</div><div class="stat-v">' + (item.rate == null ? '—' : item.rate.toFixed(1) + '%') + '</div></div>' +
+          '<div class="stat"><div class="stat-l">成本</div><div class="stat-v">' + fmtMoney(item.cost) + '</div></div>' +
+          '<div class="stat"><div class="stat-l">库存金额</div><div class="stat-v money">' + fmtMoney(item.totalAmount) + '</div></div>' +
+          '<div class="stat"><div class="stat-l">创建日期</div><div class="stat-v" style="font-size:12px">' + esc(fmtDate(item.created)) + '</div></div>' +
+        '</div>' +
+        '<div class="detail-summary">' +
+          '<span class="metric-pill">' + esc(item.warn.text) + '</span>' +
+        '</div>' +
+        '<section class="section">' +
+          '<div class="section-h"><h2>尺码分布</h2><span title="最低20双；近30天发货少于30双的慢销款按2/4/5/5/4/2保底比例；快销款按近60天尺码结构平滑，单码计划最多占订单40%">售 = 发货 · 存 = 74号仓 · 补 = 点数字微调 · 补后 = 存+补</span></div>' +
+          sizeTableHtml(item) +
+        '</section>' +
+        '<div class="note-box">' +
+          '<label for="note"><span>给工厂的备注</span><span class="note-status" id="noteStatus">' +
+            (syncEnabled ? '服务器同步' : '正在连接共享数据…') +
+          '</span></label>' +
+          '<input class="note-input" id="note" value="' + esc(noteOf(code)) + '" placeholder="例如颜色、交期、特殊要求…">' +
+        '</div>' +
+        orderRecordBoxHtml(code) +
+        '<div class="sheet-actions">' +
+          '<button class="btn" data-close="1">关闭</button>' +
+          '<button class="btn primary" id="copyPlan">📋 复制并记录补货清单</button>' +
+        '</div>';
+      $('sheetWrap').classList.add('open');
+      $('sheetWrap').setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      $('note').addEventListener('input', (event) => {
+        const notes = readJson(NOTE_KEY, {});
+        const value = event.target.value;
+        if (value) notes[code] = value; else delete notes[code];
+        saveJson(NOTE_KEY, notes);
+        queueRestockNote(code, value);
+      });
+      const refreshPlanTotals = () => {
+        const inputs = [...$('sheet').querySelectorAll('.plan-input')];
+        let planSum = 0;
+        let stockSum = 0;
+        inputs.forEach((input) => {
+          const value = Math.max(0, Math.round(num(input.value)));
+          const stock = num(input.dataset.stock);
+          planSum += value;
+          stockSum += stock;
+          input.classList.toggle('changed', value !== num(input.dataset.base));
+          const after = $('sheet').querySelector('[data-after="' + input.dataset.size + '"]');
+          if (after) after.textContent = fmtInt(stock + value);
+        });
+        const planTotal = $('planTotal');
+        const afterTotal = $('afterTotal');
+        const planTag = $('detailPlanTag');
+        if (planTotal) planTotal.textContent = fmtInt(planSum);
+        if (afterTotal) afterTotal.textContent = fmtInt(stockSum + planSum);
+        if (planTag) {
+          planTag.textContent = '计划补单 ' + fmtInt(planSum) + ' 双';
+          planTag.hidden = planSum <= 0;
+        }
+      };
+      $('sheet').querySelectorAll('.plan-input').forEach((input) => {
+        input.addEventListener('input', (event) => {
+          const digits = String(event.target.value || '').replace(/\D/g, '').slice(0, 4);
+          if (event.target.value !== digits) event.target.value = digits;
+          savePlanOverride(code, input.dataset.size, num(digits), input.dataset.base);
+          refreshPlanTotals();
+        });
+        input.addEventListener('blur', () => {
+          const value = Math.max(0, Math.round(num(input.value)));
+          input.value = String(value);
+          savePlanOverride(code, input.dataset.size, value, input.dataset.base);
+          refreshPlanTotals();
+        });
+      });
+      const resetPlans = $('resetPlans');
+      if (resetPlans) {
+        resetPlans.addEventListener('click', () => {
+          clearPlanOverrides(code);
+          openDetail(code);
+          showToast('已恢复系统建议补单');
+        });
+      }
+      bindOrderRecordBox(code);
+      $('copyPlan').addEventListener('click', () => copyPlan(item));
+    }
+
+    function closeDetail() {
+      $('sheetWrap').classList.remove('open');
+      $('sheetWrap').setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      currentCode = '';
+    }
+
+    function copyTextToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise((resolve, reject) => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy') ? resolve() : reject(new Error('copy failed'));
+        } catch (error) {
+          reject(error);
+        } finally {
+          textarea.remove();
+        }
+      });
+    }
+
+    function copyPlan(item) {
+      const picks = [...$('sheet').querySelectorAll('.plan-input')]
+        .map((input) => ({ s: input.dataset.size, plan: Math.max(0, Math.round(num(input.value))) }))
+        .filter((size) => size.plan > 0);
+      const total = picks.reduce((sum, size) => sum + size.plan, 0);
+      if (!total) {
+        showToast('请先填写补单数量');
+        return;
+      }
+      const note = String($('note') && $('note').value || '').trim();
+      const lines = [new Date().toLocaleDateString('zh-CN')];
+      if (note) lines.push('给工厂备注：' + note);
+      lines.push('下单货号：' + item.code + '（合计 ' + fmtInt(total) + '双）');
+      picks.forEach((size) => lines.push(size.s + '码 ' + fmtInt(size.plan) + '双'));
+      const text = lines.join('\n');
+      const done = async () => {
+        let savedToServer = true;
+        try {
+          await saveOrderRecord(item.code, total, {
+            text,
+            note,
+            sizes: picks.map((size) => ({ s: size.s, q: size.plan })),
+          });
+        } catch (error) {
+          savedToServer = false;
+        }
+        refreshOrderRecordBox(item.code);
+        renderCards();
+        showToast(!syncEnabled
+          ? '已复制并记录到本机 ' + fmtInt(total) + ' 双'
+          : (savedToServer
+            ? '已复制并记录工厂下单 ' + fmtInt(total) + ' 双'
+            : '已复制并记录到本机，服务器同步暂失败'));
+      };
+      const failed = () => showToast('复制失败，请长按备注手动复制');
+      copyTextToClipboard(text).then(done, failed);
+    }
+
+    let toastTimer = null;
+    function showToast(message, duration = 1800) {
+      const toast = $('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    function restockAgeMs(restock) {
+      const stamp = Number(restock && restock.updated_ts);
+      if (stamp > 0) return Math.max(0, Date.now() - stamp * 1000);
+      // 兼容后端刚重启、还没有 updated_ts 的短窗口：解析「11-14 16:41」。
+      const match = String(restock && restock.updated || '').match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+      if (!match) return Infinity;
+      const now = new Date();
+      const at = new Date(now.getFullYear(), Number(match[1]) - 1, Number(match[2]),
+        Number(match[3]), Number(match[4]), 0, 0);
+      if (at.getTime() > now.getTime() + 86400000) at.setFullYear(at.getFullYear() - 1);
+      return Math.max(0, Date.now() - at.getTime());
+    }
+
+    function renderDashboard(data, manual = false) {
+      const sr = data && data.details && data.details.sales_rank;
+      if (!sr) throw new Error('接口没有销售排行数据');
+      latestDashboard = data;
+      const parsed = parseItems(sr);
+      allItems = parsed.items;
+      $('sortNote').textContent = parsed.hiddenNamedNorestock
+        ? '已过滤未备货 ' + parsed.hiddenNamedNorestock + ' 款'
+        : '按桌面版销售排行顺序';
+      const today = sr.today || {};
+      const restock = data.details.restock || {};
+      lastDashboardStatus = (STATIC_SNAPSHOT ? (syncEnabled ? '共享快照 ' : '快照 ') : '库存 ') + (restock.updated || '—') +
+        ' · 今日 ¥' + fmtInt(today.amount) + ' / ' + fmtInt(today.orders) + ' 单';
+      $('updated').textContent = lastDashboardStatus;
+      applyFilter();
+    }
+
+    async function fetchDashboard() {
+      const response = await fetch(API, { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }
+
+    async function finishInventorySync(beforeAttempt, beforeInventory, manual) {
+      try {
+        let data = null;
+        const deadline = Date.now() + 180000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          data = await fetchDashboard();
+          const restock = data && data.details && data.details.restock || {};
+          if (!restock.running && num(restock.inventory_attempt_seq) > beforeAttempt) break;
+        }
+        if (!data) throw new Error('等待库存同步超时');
+        const restock = data.details.restock || {};
+        if (num(restock.inventory_attempt_seq) <= beforeAttempt) throw new Error('库存同步超时');
+        if (num(restock.inventory_seq) <= beforeInventory) {
+          throw new Error(restock.last_error || '库存同步失败');
+        }
+        renderDashboard(data, manual);
+        if (manual) showToast('库存已更新', 1100);
+      } catch (error) {
+        $('updated').textContent = '后台库存更新失败：' + error.message;
+        if (manual) showToast('库存更新失败：' + error.message);
+      } finally {
+        inventorySyncing = false;
+        $('refresh').disabled = false;
+      }
+    }
+
+    async function syncInventory(manual = false) {
+      if (STATIC_SNAPSHOT) {
+        showToast('公开页是数据快照，库存请在电脑端刷新', 2200);
+        return;
+      }
+      if (inventorySyncing) {
+        if (manual) showToast('后台正在更新，完成后会自动刷新', 900);
+        return;
+      }
+      inventorySyncing = true;
+      $('refresh').disabled = true;
+      const before = latestDashboard && latestDashboard.details && latestDashboard.details.restock || {};
+      const beforeAttempt = num(before.inventory_attempt_seq);
+      const beforeInventory = num(before.inventory_seq);
+      if (manual) {
+        $('updated').textContent = '刷新已提交，后台更新中';
+        showToast('刷新已提交，完成自动更新', 900);
+        setTimeout(() => {
+          if (inventorySyncing && $('updated').textContent === '刷新已提交，后台更新中') {
+            $('updated').textContent = lastDashboardStatus;
+          }
+        }, 900);
+      }
+      let started = false;
+      try {
+        const response = await fetch(serviceUrl(REFRESH_API), { method: 'POST', cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        if (result && result.success === false) throw new Error(result.msg || '无法开始同步');
+        started = true;
+      } catch (error) {
+        inventorySyncing = false;
+        $('updated').textContent = '库存同步失败：' + error.message;
+        if (manual) showToast('库存同步失败：' + error.message);
+      } finally {
+        $('refresh').disabled = false;
+        $('cards').classList.remove('loading');
+      }
+      if (started) void finishInventorySync(beforeAttempt, beforeInventory, manual);
+    }
+
+    async function loadData(manual = false) {
+      if (loading || inventorySyncing) return;
+      loading = true;
+      $('refresh').disabled = true;
+      $('updated').textContent = manual ? '正在刷新…' : $('updated').textContent;
+      try {
+        const [data] = await Promise.all([fetchDashboard(), fetchOrderRecords(), fetchRestockNotes()]);
+        renderDashboard(data, manual);
+        const restock = data && data.details && data.details.restock;
+        if (!STATIC_SNAPSHOT &&
+            restockAgeMs(restock) > AUTO_SYNC_STALE_MS &&
+            Date.now() - lastAutoSyncAttempt > AUTO_SYNC_COOLDOWN_MS) {
+          lastAutoSyncAttempt = Date.now();
+          setTimeout(() => syncInventory(false), 0);
+        }
+      } catch (error) {
+        $('updated').textContent = '读取失败：' + error.message;
+        if (!allItems.length) {
+          $('cards').innerHTML = '<div class="empty"><div class="big">⚠️</div>暂时读不到销售排行数据<br><small>请确认 8123 售后数据服务正在运行</small></div>';
+        }
+      } finally {
+        loading = false;
+        $('refresh').disabled = false;
+        $('cards').classList.remove('loading');
+      }
+    }
+
+    $('q').addEventListener('input', applyFilter);
+    $('clear').addEventListener('click', () => {
+      $('q').value = '';
+      $('q').focus();
+      applyFilter();
+    });
+    $('filters').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-filter]');
+      if (!button) return;
+      currentFilter = button.dataset.filter;
+      document.querySelectorAll('.filter').forEach((node) => node.classList.toggle('on', node === button));
+      applyFilter();
+    });
+    $('cards').addEventListener('click', (event) => {
+      const card = event.target.closest('.sr-card');
+      if (card) openDetail(card.dataset.code);
+    });
+    $('cards').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const card = event.target.closest('.sr-card');
+      if (!card) return;
+      event.preventDefault();
+      openDetail(card.dataset.code);
+    });
+    $('sheet').addEventListener('click', (event) => {
+      if (event.target.closest('[data-close]')) closeDetail();
+    });
+    $('sheetWrap').addEventListener('click', (event) => {
+      if (event.target === $('sheetWrap')) closeDetail();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && $('sheetWrap').classList.contains('open')) closeDetail();
+    });
+    $('refresh').addEventListener('click', () => syncInventory(true));
+    $('loadMore').addEventListener('click', () => {
+      visibleLimit += PAGE_SIZE;
+      renderCards();
+    });
+
+    const syncToTop = () => $('toTop').classList.toggle('show', window.scrollY > 900);
+    window.addEventListener('scroll', syncToTop, { passive: true });
+    $('toTop').addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    syncToTop();
+
+    (async () => {
+      await resolveSyncBase();
+      loadData();
+      setInterval(() => loadData(), 60000);
+    })();
+  </script>
+</body>
+</html>
