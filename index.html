@@ -538,6 +538,7 @@
     let lastDashboardStatus = '正在连接实时数据…';
     let visibleLimit = PAGE_SIZE;
     let lastFilterKey = '';
+    let defaultSortNote = '按桌面版销售排行顺序';
     const planOverrides = Object.create(null);
     let orderRecords = readJson(ORDER_KEY, {});
     let todoRecords = readJson(TODO_KEY, {});
@@ -803,6 +804,16 @@
       return true;
     }
 
+    function sortItemsBySuggestedPlan(items) {
+      return items
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+          const diff = num(b.item.plan) - num(a.item.plan);
+          return diff || a.index - b.index;
+        })
+        .map((entry) => entry.item);
+    }
+
     function applyFilter() {
       const query = $('q').value.trim().toLowerCase();
       $('clear').style.display = query ? 'block' : 'none';
@@ -816,6 +827,13 @@
         if (!query) return true;
         return item.code.toLowerCase().includes(query) || item.display.toLowerCase().includes(query);
       });
+      const sortBySuggestedPlan = currentFilter === 'warn' || currentFilter === 'need';
+      if (sortBySuggestedPlan) {
+        filteredItems = sortItemsBySuggestedPlan(filteredItems);
+      }
+      $('sortNote').textContent = sortBySuggestedPlan
+        ? '按系统补货数量从多到少'
+        : defaultSortNote;
       renderCards();
     }
 
@@ -1582,7 +1600,7 @@
       const restock = data.details.restock || {};
       const parsed = parseItems(sr, restock);
       allItems = parsed.items;
-      $('sortNote').textContent = parsed.hiddenNamedNorestock
+      defaultSortNote = parsed.hiddenNamedNorestock
         ? '已过滤未备货 ' + parsed.hiddenNamedNorestock + ' 款'
         : '按桌面版销售排行顺序';
       const today = sr.today || {};
