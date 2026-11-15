@@ -1295,8 +1295,10 @@
         const deleteBtn = node.querySelector('[data-order-delete]');
         if (copyBtn && entry) {
           copyBtn.addEventListener('click', () => {
-            copyTextToClipboard(orderEntryText(code, entry))
-              .then(() => showToast('已复制这条补货记录'))
+            copyOrderCardToClipboard(code, orderEntryText(code, entry))
+              .then((copyMode) => showToast(copyMode === 'image'
+                ? '已复制带商品图的这条补货记录'
+                : '图片复制不可用，已复制文字'))
               .catch(() => showToast('复制失败，请长按记录文字手动复制'));
           });
         }
@@ -1535,6 +1537,194 @@
       });
     }
 
+    function orderCardImageUrl(url) {
+      const raw = String(url || '').trim();
+      if (!raw) return '';
+      if (/^(data|blob):/i.test(raw)) return raw;
+      try {
+        const parsed = new URL(raw, location.href);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        const source = parsed.href.replace(/^https?:\/\//i, '');
+        return 'https://images.weserv.nl/?url=' + encodeURIComponent(source) +
+          '&w=920&h=720&fit=inside&output=jpg';
+      } catch (error) {
+        return '';
+      }
+    }
+
+    function loadOrderCardImage(url) {
+      const source = orderCardImageUrl(url);
+      if (!source) return Promise.resolve(null);
+      return new Promise((resolve) => {
+        const image = new Image();
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        image.crossOrigin = 'anonymous';
+        image.onload = () => finish(image);
+        image.onerror = () => finish(null);
+        image.src = source;
+        setTimeout(() => finish(null), 12000);
+      });
+    }
+
+    function roundedCanvasRect(ctx, x, y, width, height, radius) {
+      const r = Math.min(radius, width / 2, height / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+      ctx.lineTo(x + width, y + height - r);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      ctx.lineTo(x + r, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function canvasTextLines(ctx, text, maxWidth) {
+      const lines = [];
+      String(text || '').split(/\r?\n/).forEach((paragraph) => {
+        if (!paragraph) {
+          lines.push('');
+          return;
+        }
+        let line = '';
+        Array.from(paragraph).forEach((char) => {
+          const next = line + char;
+          if (line && ctx.measureText(next).width > maxWidth) {
+            lines.push(line);
+            line = char;
+          } else {
+            line = next;
+          }
+        });
+        if (line) lines.push(line);
+      });
+      return lines;
+    }
+
+    async function buildOrderCardBlob(code, text) {
+      const item = allItems.find((candidate) =>
+        String(candidate.code || '').trim() === String(code || '').trim()) || null;
+      const image = await loadOrderCardImage(item && item.pic);
+      const width = 1080;
+      const outer = 44;
+      const cardX = outer;
+      const cardY = outer;
+      const cardW = width - outer * 2;
+      const pad = 36;
+      const imageW = cardW - pad * 2;
+      const imageH = 640;
+      const titleGap = 70;
+      const titleSize = 56;
+      const bodySize = 34;
+      const bodyLineHeight = 54;
+      const bodyTopGap = 38;
+      const footerH = 70;
+
+      const measureCanvas = document.createElement('canvas');
+      const measureCtx = measureCanvas.getContext('2d');
+      measureCtx.font = '500 ' + bodySize + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+      const bodyLines = canvasTextLines(measureCtx, text, imageW);
+      const cardH = pad + imageH + titleGap + titleSize + bodyTopGap +
+        bodyLines.length * bodyLineHeight + footerH + pad;
+      const height = cardY + cardH + outer;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#eef3f8';
+      ctx.fillRect(0, 0, width, height);
+      ctx.save();
+      ctx.shadowColor = 'rgba(28, 47, 79, .12)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 12;
+      ctx.fillStyle = '#ffffff';
+      roundedCanvasRect(ctx, cardX, cardY, cardW, cardH, 32);
+      ctx.fill();
+      ctx.restore();
+
+      const imageX = cardX + pad;
+      const imageY = cardY + pad;
+      ctx.fillStyle = '#f8fafc';
+      roundedCanvasRect(ctx, imageX, imageY, imageW, imageH, 24);
+      ctx.fill();
+      ctx.save();
+      roundedCanvasRect(ctx, imageX, imageY, imageW, imageH, 24);
+      ctx.clip();
+      if (image) {
+        const scale = Math.min(imageW / image.naturalWidth, imageH / image.naturalHeight);
+        const drawW = image.naturalWidth * scale;
+        const drawH = image.naturalHeight * scale;
+        ctx.drawImage(
+          image,
+          imageX + (imageW - drawW) / 2,
+          imageY + (imageH - drawH) / 2,
+          drawW,
+          drawH,
+        );
+      } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 34px "Microsoft YaHei", "PingFang SC", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('商品图暂时无法加载', imageX + imageW / 2, imageY + imageH / 2);
+      }
+      ctx.restore();
+
+      const titleY = imageY + imageH + titleGap;
+      ctx.fillStyle = '#17345f';
+      ctx.font = '800 ' + titleSize + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(String(code || (item && item.display) || ''), imageX, titleY);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '500 ' + bodySize + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+      let bodyY = titleY + bodyTopGap + bodySize;
+      bodyLines.forEach((line) => {
+        if (line.startsWith('下单货号：')) ctx.fillStyle = '#b45f06';
+        else if (line.startsWith('给工厂备注：')) ctx.fillStyle = '#1d4ed8';
+        else ctx.fillStyle = '#334155';
+        ctx.fillText(line, imageX, bodyY);
+        bodyY += bodyLineHeight;
+      });
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '500 24px "Microsoft YaHei", "PingFang SC", sans-serif';
+      ctx.fillText('销售排行 · 工厂补货单', imageX, cardY + cardH - pad + 4);
+
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('order card image failed'));
+        }, 'image/png');
+      });
+    }
+
+    async function copyOrderCardToClipboard(code, text) {
+      const blobPromise = buildOrderCardBlob(code, text);
+      if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blobPromise }),
+          ]);
+          return 'image';
+        } catch (error) {
+          // 某些手机浏览器不支持复制图片，保留纯文字兜底。
+        }
+      }
+      await blobPromise.catch(() => null);
+      await copyTextToClipboard(text);
+      return 'text';
+    }
+
     function copyPlan(item) {
       const picks = [...$('sheet').querySelectorAll('.plan-input')]
         .map((input) => ({ s: input.dataset.size, plan: Math.max(0, Math.round(num(input.value))) }))
@@ -1550,7 +1740,7 @@
       lines.push('下单货号：' + item.code + '（合计 ' + fmtInt(total) + '双）');
       picks.forEach((size) => lines.push(size.s + '码 ' + fmtInt(size.plan) + '双'));
       const text = lines.join('\n');
-      const done = async () => {
+      const done = async (copyMode) => {
         let savedToServer = true;
         try {
           await saveOrderRecord(item.code, total, {
@@ -1563,14 +1753,15 @@
         }
         refreshOrderRecordBox(item.code);
         renderCards();
-        showToast(!syncEnabled
-          ? '已复制并记录到本机 ' + fmtInt(total) + ' 双'
+        const copied = copyMode === 'image' ? '已复制带图补货单' : '图片复制不可用，已复制文字';
+        showToast(copied + (!syncEnabled
+          ? '并记录到本机 ' + fmtInt(total) + ' 双'
           : (savedToServer
-            ? '已复制并记录工厂下单 ' + fmtInt(total) + ' 双'
-            : '已复制并记录到本机，服务器同步暂失败'));
+            ? '并记录工厂下单 ' + fmtInt(total) + ' 双'
+            : '并记录到本机，服务器同步暂失败')));
       };
       const failed = () => showToast('复制失败，请长按备注手动复制');
-      copyTextToClipboard(text).then(done, failed);
+      copyOrderCardToClipboard(item.code, text).then(done, failed);
     }
 
     let toastTimer = null;
