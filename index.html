@@ -299,9 +299,16 @@
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 18px;
+    }
+    .sheet-scroll::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     @keyframes sheetIn { from { transform: translateY(30px); opacity: .7; } }
     .grab { width: 38px; height: 4px; border-radius: 4px; background: #d8dee9; margin: 2px auto 13px; }
