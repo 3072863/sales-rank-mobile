@@ -295,15 +295,21 @@
       box-shadow: 0 -16px 50px rgba(15, 23, 42, .22);
       animation: sheetIn .18s ease-out;
     }
-    .sheet-scroll {
+    .sheet-scroll-mask {
       flex: 1 1 auto;
       min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    .sheet-scroll {
+      width: calc(100% + 18px);
+      height: 100%;
       overflow-y: auto;
       scrollbar-width: none;
       -ms-overflow-style: none;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
-      padding-bottom: 18px;
+      padding: 0 18px 18px 0;
     }
     .sheet-scroll::-webkit-scrollbar {
       display: none;
@@ -1384,7 +1390,7 @@
         : '<span class="tag orange" id="detailPlanTag" hidden>计划补单 0 双</span>';
       const onTodo = todoHas(code);
       $('sheet').innerHTML =
-        '<div class="sheet-scroll">' +
+        '<div class="sheet-scroll-mask"><div class="sheet-scroll">' +
         '<div class="grab"></div>' +
         '<div class="sheet-head">' +
           '<div class="sheet-pic">' + picHtml(item) + '</div>' +
@@ -1412,7 +1418,7 @@
           '<input class="note-input" id="note" value="' + esc(noteOf(code)) + '" placeholder="例如颜色、交期、特殊要求…">' +
         '</div>' +
         orderRecordBoxHtml(code) +
-        '</div>' +
+        '</div></div>' +
         '<div class="sheet-actions">' +
           '<button class="btn todo' + (onTodo ? ' on' : '') + '" id="toggleTodo">' +
             (onTodo ? '✓ 已标需处理' : '⚠ 标为需处理') +
