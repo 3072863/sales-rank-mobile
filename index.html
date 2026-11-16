@@ -344,6 +344,24 @@
     }
     .section-h h2 { margin: 0; font-size: 15px; }
     .section-h span { color: var(--muted); font-size: 11px; }
+    /* 【2026-11-16·老板要求】填目标备货数，按销售占比分配并扣库存、未到货下单量 */
+    .target-box {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
+      margin-bottom: 9px; padding: 9px 10px;
+      border: 1px solid #dce7f7; border-radius: 11px; background: #f7faff;
+    }
+    .target-box label { color: #526178; font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .target-input {
+      width: 82px; height: 34px; padding: 0 8px; box-sizing: border-box;
+      border: 1px solid #bdd0ed; border-radius: 8px; outline: 0;
+      background: #fff; color: #17345f; text-align: center;
+      font: 850 14px/32px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+    .target-input:focus { border-color: #2f6df6; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    .target-unit { color: #64748b; font-size: 12px; font-weight: 750; }
+    .target-hint { flex: 1 1 100%; color: #728097; font-size: 10.5px; line-height: 1.45; }
+    .target-hint b { color: #1f4fd8; }
     .size-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
     .size-table th { padding: 7px 3px; background: #f4f7fb; color: #728097; font-size: 10.5px; font-weight: 700; }
     .size-table th:first-child { border-radius: 9px 0 0 9px; }
@@ -567,6 +585,7 @@
     let lastRenderSignature = '';
     let defaultSortNote = '按桌面版销售排行顺序';
     const planOverrides = Object.create(null);
+    const stockTargets = Object.create(null);
     const restockArrivalCache = Object.create(null);
     const restockArrivalPending = Object.create(null);
     let orderRecords = readJson(ORDER_KEY, {});
@@ -1124,7 +1143,10 @@
         delete restockArrivalCache[code];
       } finally {
         delete restockArrivalPending[code];
-        if (currentCode === code) refreshOrderRecordBox(code, false);
+        if (currentCode === code) {
+          refreshTargetPlanView(code);
+          refreshOrderRecordBox(code, false);
+        }
       }
     }
 
@@ -1478,8 +1500,10 @@
     function planTotalOf(item) {
       const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
       const overrides = planOverridesOf(item.code);
-      if (!Object.keys(overrides).length) return num(item.plan);
-      return sizes.reduce((sum, size) => sum + planOf(item.code, String(size.s), size.plan), 0);
+      const targetPlans = targetPlansOf(item);
+      if (!Object.keys(overrides).length && !targetPlans) return num(item.plan);
+      return sizes.reduce((sum, size) =>
+        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans)), 0);
     }
 
     function savePlanOverride(code, size, value, suggested) {
@@ -1496,18 +1520,147 @@
       delete planOverrides[code];
     }
 
+    function unarrivedBySizeOf(item) {
+      const out = {};
+      const state = restockArrivalCache[item.code];
+      const progress = state && state.progress;
+      if (progress && num(progress.needed_qty) > 0 && Array.isArray(progress.sizes)) {
+        progress.sizes.forEach((size) => {
+          const key = String(size && size.s || '').trim();
+          if (key) out[key] = Math.max(0, num(size.shortage));
+        });
+        return out;
+      }
+      orderEntriesOf(item.code).forEach((entry) => {
+        (entry.sizes || []).forEach((size) => {
+          const key = String(size && size.s || '').trim();
+          if (key) out[key] = (out[key] || 0) + Math.max(0, num(size.q));
+        });
+      });
+      return out;
+    }
+
+    // 目标量先按销量占比分到各码，再扣该码实际库存和尚未到货的上次下单量。
+    function targetPlansOf(item) {
+      const target = Math.max(0, Math.round(num(stockTargets[item.code])));
+      const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
+      if (!(target > 0) || !sizes.length) return null;
+      const weights = sizes.map((size) => Math.max(0, num(size.n)));
+      if (!weights.some((weight) => weight > 0)) weights.fill(1);
+      const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+      const raw = weights.map((weight) => target * weight / weightSum);
+      const allocated = raw.map((value) => Math.floor(value));
+      let left = target - allocated.reduce((sum, value) => sum + value, 0);
+      const order = raw
+        .map((value, index) => ({ index, remainder: value - allocated[index], weight: weights[index] }))
+        .sort((a, b) => b.remainder - a.remainder || b.weight - a.weight || a.index - b.index);
+      let cursor = 0;
+      while (left > 0 && order.length) {
+        allocated[order[cursor % order.length].index] += 1;
+        left -= 1;
+        cursor += 1;
+      }
+      const pending = unarrivedBySizeOf(item);
+      const plans = {};
+      sizes.forEach((size, index) => {
+        const key = String(size.s);
+        plans[key] = Math.max(0, allocated[index] - num(size.stock) - num(pending[key]));
+      });
+      return plans;
+    }
+
+    function targetBasePlan(item, size, targetPlans) {
+      const key = String(size.s);
+      return targetPlans
+        ? num(targetPlans[key])
+        : num(size.plan);
+    }
+
+    function refreshTargetPlanView(code) {
+      if (!(num(stockTargets[code]) > 0) || currentCode !== code) return;
+      const item = allItems.find((entry) => entry.code === code);
+      const host = $('sizeTableHost');
+      if (!item || !host) return;
+      host.innerHTML = sizeTableHtml(item);
+      bindPlanInputsForDetail(item);
+    }
+
+    function refreshDetailPlanTotals(code) {
+      const inputs = [...$('sheet').querySelectorAll('.plan-input')];
+      let planSum = 0;
+      let stockSum = 0;
+      inputs.forEach((input) => {
+        const value = Math.max(0, Math.round(num(input.value)));
+        const stock = num(input.dataset.stock);
+        planSum += value;
+        stockSum += stock;
+        input.classList.toggle('changed', value !== num(input.dataset.base));
+        const after = $('sheet').querySelector('[data-after="' + input.dataset.size + '"]');
+        if (after) after.textContent = fmtInt(stock + value);
+      });
+      const planTotal = $('planTotal');
+      const afterTotal = $('afterTotal');
+      const planTag = $('detailPlanTag');
+      if (planTotal) planTotal.textContent = fmtInt(planSum);
+      if (afterTotal) afterTotal.textContent = fmtInt(stockSum + planSum);
+      if (planTag) {
+        planTag.textContent = '计划补单 ' + fmtInt(planSum) + ' 双';
+        planTag.hidden = planSum <= 0;
+      }
+      const targetHint = $('targetHint');
+      const target = Math.max(0, Math.round(num($('stockTarget') && $('stockTarget').value)));
+      if (targetHint) {
+        if (target > 0) {
+          targetHint.innerHTML = '目标 <b>' + fmtInt(target) + ' 双</b> · 库存 ' +
+            fmtInt(stockSum) + ' 双 · 已下单未到货 ' + fmtInt(orderRemainingOf(code)) +
+            ' 双 · 本次补 <b>' + fmtInt(planSum) + ' 双</b>';
+        } else {
+          targetHint.textContent = '按销售占比分配，自动扣库存和已下单未到货';
+        }
+      }
+    }
+
+    function bindPlanInputsForDetail(item) {
+      const code = item.code;
+      $('sheet').querySelectorAll('.plan-input').forEach((input) => {
+        input.addEventListener('input', (event) => {
+          const digits = String(event.target.value || '').replace(/\D/g, '').slice(0, 4);
+          if (event.target.value !== digits) event.target.value = digits;
+          savePlanOverride(code, input.dataset.size, num(digits), input.dataset.base);
+          refreshDetailPlanTotals(code);
+        });
+        input.addEventListener('blur', () => {
+          const value = Math.max(0, Math.round(num(input.value)));
+          input.value = value > 0 ? String(value) : '';
+          savePlanOverride(code, input.dataset.size, value, input.dataset.base);
+          refreshDetailPlanTotals(code);
+        });
+      });
+      const resetPlans = $('resetPlans');
+      if (resetPlans) {
+        resetPlans.addEventListener('click', () => {
+          clearPlanOverrides(code);
+          openDetail(code);
+          showToast(num(stockTargets[code]) > 0 ? '已恢复目标分配' : '已恢复系统建议补单');
+        });
+      }
+      refreshDetailPlanTotals(code);
+    }
+
     function sizeTableHtml(item) {
       const chart = item.chart;
       if (!chart || !Array.isArray(chart.sizes) || !chart.sizes.length) {
         return '<div class="empty" style="padding:18px">暂无尺码数据</div>';
       }
+      const targetPlans = targetPlansOf(item);
       const total = chart.sizes.reduce((sum, size) => sum + num(size.n), 0);
       const sumStock = chart.sizes.reduce((sum, size) => sum + num(size.stock), 0);
-      const sumPlan = chart.sizes.reduce((sum, size) => sum + planOf(item.code, String(size.s), size.plan), 0);
+      const sumPlan = chart.sizes.reduce((sum, size) =>
+        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans)), 0);
       const overrides = planOverridesOf(item.code);
       const rows = chart.sizes.map((size) => {
         const stock = num(size.stock);
-        const suggested = num(size.plan);
+        const suggested = targetBasePlan(item, size, targetPlans);
         const plan = planOf(item.code, String(size.s), suggested);
         const changed = Object.prototype.hasOwnProperty.call(overrides, String(size.s));
         const stockClass = stock < 0 ? 'stock-zero' : (stock === 0 ? 'stock-zero' : (stock <= 3 ? 'stock-low' : ''));
@@ -1519,7 +1672,7 @@
           '<td class="' + stockClass + '">' + fmtInt(stock) + '</td>' +
           '<td class="plan-cell"><input class="plan-input' + (changed ? ' changed' : '') + '"' +
             ' data-size="' + esc(size.s) + '" data-base="' + suggested + '" data-stock="' + stock + '"' +
-            ' type="text" inputmode="numeric" pattern="[0-9]*" value="' + plan + '"' +
+            ' type="text" inputmode="numeric" pattern="[0-9]*" value="' + (plan > 0 ? plan : '') + '"' +
             ' aria-label="' + esc(size.s) + '码补单数量"></td>' +
           '<td class="after" data-after="' + esc(size.s) + '">' + fmtInt(stock + plan) + '</td>' +
         '</tr>';
@@ -1530,7 +1683,8 @@
         '<tbody>' + rows + '</tbody>' +
         '<tfoot><tr><td>合计</td><td>' + fmtInt(total) + '</td><td>100%</td><td>' + fmtInt(sumStock) + '</td><td class="plan" id="planTotal">' + fmtInt(sumPlan) + '</td><td class="after" id="afterTotal">' + fmtInt(sumStock + sumPlan) + '</td></tr></tfoot>' +
       '</table></div>' +
-      (Object.keys(overrides).length ? '<button type="button" class="plan-reset" id="resetPlans">恢复系统建议补单</button>' : '');
+      (Object.keys(overrides).length ? '<button type="button" class="plan-reset" id="resetPlans">' +
+        (targetPlans ? '恢复目标分配' : '恢复系统建议补单') + '</button>' : '');
     }
 
     function openDetail(code) {
@@ -1545,6 +1699,7 @@
       const planTag = adjustedPlan > 0
         ? '<span class="tag orange" id="detailPlanTag">计划补单 ' + fmtInt(adjustedPlan) + ' 双</span>'
         : '<span class="tag orange" id="detailPlanTag" hidden>计划补单 0 双</span>';
+      const target = Math.max(0, Math.round(num(stockTargets[code])));
       $('sheet').innerHTML =
         '<div class="sheet-scroll-mask"><div class="sheet-scroll">' +
         '<div class="grab"></div>' +
@@ -1565,7 +1720,14 @@
         '</div>' +
         '<section class="section">' +
           '<div class="section-h"><h2>尺码分布</h2><span title="最低20双；近30天发货少于30双的慢销款按2/4/5/5/4/2保底比例；快销款按近60天尺码结构平滑，单码计划最多占订单40%">售 = 发货 · 存 = 74号仓 · 补 = 点数字微调 · 补后 = 存+补</span></div>' +
-          sizeTableHtml(item) +
+          '<div class="target-box">' +
+            '<label for="stockTarget">目标备货</label>' +
+            '<input class="target-input" id="stockTarget" type="text" inputmode="numeric" pattern="[0-9]*"' +
+              ' value="' + (target > 0 ? target : '') + '" placeholder="如 300" aria-label="目标备货数量">' +
+            '<span class="target-unit">双</span>' +
+            '<span class="target-hint" id="targetHint">按销售占比分配，自动扣库存和已下单未到货</span>' +
+          '</div>' +
+          '<div id="sizeTableHost">' + sizeTableHtml(item) + '</div>' +
         '</section>' +
         '<div class="note-box">' +
           '<label for="note"><span>给工厂的备注</span><span class="note-status" id="noteStatus">' +
@@ -1589,51 +1751,17 @@
         saveJson(NOTE_KEY, notes);
         queueRestockNote(code, value);
       });
-      const refreshPlanTotals = () => {
-        const inputs = [...$('sheet').querySelectorAll('.plan-input')];
-        let planSum = 0;
-        let stockSum = 0;
-        inputs.forEach((input) => {
-          const value = Math.max(0, Math.round(num(input.value)));
-          const stock = num(input.dataset.stock);
-          planSum += value;
-          stockSum += stock;
-          input.classList.toggle('changed', value !== num(input.dataset.base));
-          const after = $('sheet').querySelector('[data-after="' + input.dataset.size + '"]');
-          if (after) after.textContent = fmtInt(stock + value);
-        });
-        const planTotal = $('planTotal');
-        const afterTotal = $('afterTotal');
-        const planTag = $('detailPlanTag');
-        if (planTotal) planTotal.textContent = fmtInt(planSum);
-        if (afterTotal) afterTotal.textContent = fmtInt(stockSum + planSum);
-        if (planTag) {
-          planTag.textContent = '计划补单 ' + fmtInt(planSum) + ' 双';
-          planTag.hidden = planSum <= 0;
-        }
-      };
-      $('sheet').querySelectorAll('.plan-input').forEach((input) => {
-        input.addEventListener('input', (event) => {
-          const digits = String(event.target.value || '').replace(/\D/g, '').slice(0, 4);
-          if (event.target.value !== digits) event.target.value = digits;
-          savePlanOverride(code, input.dataset.size, num(digits), input.dataset.base);
-          refreshPlanTotals();
-        });
-        input.addEventListener('blur', () => {
-          const value = Math.max(0, Math.round(num(input.value)));
-          input.value = String(value);
-          savePlanOverride(code, input.dataset.size, value, input.dataset.base);
-          refreshPlanTotals();
-        });
+      $('stockTarget').addEventListener('input', (event) => {
+        const digits = String(event.target.value || '').replace(/\D/g, '').slice(0, 5);
+        if (event.target.value !== digits) event.target.value = digits;
+        const target = Math.max(0, Math.round(num(digits)));
+        if (target > 0) stockTargets[code] = target;
+        else delete stockTargets[code];
+        clearPlanOverrides(code);
+        $('sizeTableHost').innerHTML = sizeTableHtml(item);
+        bindPlanInputsForDetail(item);
       });
-      const resetPlans = $('resetPlans');
-      if (resetPlans) {
-        resetPlans.addEventListener('click', () => {
-          clearPlanOverrides(code);
-          openDetail(code);
-          showToast('已恢复系统建议补单');
-        });
-      }
+      bindPlanInputsForDetail(item);
       bindOrderRecordBox(code);
       void fetchRestockArrivalProgress(code);
       $('copyPlan').addEventListener('click', () => copyPlan(item));
