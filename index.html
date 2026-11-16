@@ -360,6 +360,12 @@
     }
     .target-input:focus { border-color: #2f6df6; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
     .target-unit { color: #64748b; font-size: 12px; font-weight: 750; }
+    .target-reset {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 34px; padding: 0 10px; border: 1px solid #dbe4f2;
+      border-radius: 8px; color: #526178; background: #fff;
+      font-size: 11px; font-weight: 750; white-space: nowrap;
+    }
     .target-hint { flex: 1 1 100%; color: #728097; font-size: 10.5px; line-height: 1.45; }
     .target-hint b { color: #1f4fd8; }
     .size-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
@@ -1520,6 +1526,16 @@
       delete planOverrides[code];
     }
 
+    function restoreDefaultPlans(code, item) {
+      delete stockTargets[code];
+      clearPlanOverrides(code);
+      const targetInput = $('stockTarget');
+      if (targetInput) targetInput.value = '';
+      const host = $('sizeTableHost');
+      if (host) host.innerHTML = sizeTableHtml(item);
+      bindPlanInputsForDetail(item);
+    }
+
     function unarrivedBySizeOf(item) {
       const out = {};
       const state = restockArrivalCache[item.code];
@@ -1726,6 +1742,7 @@
             '<input class="target-input" id="stockTarget" type="text" inputmode="numeric" pattern="[0-9]*"' +
               ' value="' + (target > 0 ? target : '') + '" placeholder="如 300" aria-label="目标备货数量">' +
             '<span class="target-unit">双</span>' +
+            '<button type="button" class="target-reset" id="resetStockTarget">恢复默认补单</button>' +
             '<span class="target-hint" id="targetHint">按销售占比分配，自动扣库存和已下单未到货</span>' +
           '</div>' +
           '<div id="sizeTableHost">' + sizeTableHtml(item) + '</div>' +
@@ -1762,6 +1779,10 @@
         $('sizeTableHost').innerHTML = sizeTableHtml(item);
         bindPlanInputsForDetail(item);
       });
+      $('resetStockTarget').addEventListener('click', () => {
+        restoreDefaultPlans(code, item);
+        showToast('已恢复系统默认补单');
+      });
       bindPlanInputsForDetail(item);
       bindOrderRecordBox(code);
       void fetchRestockArrivalProgress(code);
@@ -1769,6 +1790,10 @@
     }
 
     function closeDetail() {
+      if (currentCode && num(stockTargets[currentCode]) > 0) {
+        delete stockTargets[currentCode];
+        clearPlanOverrides(currentCode);
+      }
       $('sheetWrap').classList.remove('open');
       $('sheetWrap').setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
