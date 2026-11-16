@@ -540,6 +540,7 @@
     let noteSyncTimer = null;
     let apiBase = '';
     let syncEnabled = !STATIC_SNAPSHOT;
+    let syncResolvePromise = null;
 
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -814,35 +815,46 @@
       }
     }
 
-    async function resolveSyncBase() {
+    async function resolveSyncBase(force = false) {
       if (!STATIC_SNAPSHOT) {
         syncEnabled = true;
-        return;
+        return true;
       }
-      const candidates = [];
-      const cached = String(localStorage.getItem(API_BASE_KEY) || '').replace(/\/+$/, '');
-      if (cached) candidates.push(cached);
-      try {
-        const response = await fetchWithTimeout(SYNC_ENDPOINT_LOOKUP, {
-          cache: 'no-store',
-          headers: { Accept: 'application/vnd.github+json' },
-        });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const result = await response.json();
-        const endpoint = JSON.parse(decodeBase64Utf8(result.content || ''));
-        const remote = String(endpoint.api_base || '').replace(/\/+$/, '');
-        if (remote && !candidates.includes(remote)) candidates.push(remote);
-      } catch (error) {}
-      for (const candidate of candidates) {
-        if (await checkApiBase(candidate)) {
-          apiBase = candidate;
-          syncEnabled = true;
-          localStorage.setItem(API_BASE_KEY, candidate);
-          return;
+      if (syncEnabled && !force) return true;
+      if (syncResolvePromise) return syncResolvePromise;
+      syncResolvePromise = (async () => {
+        const candidates = [];
+        try {
+          const response = await fetchWithTimeout(SYNC_ENDPOINT_LOOKUP, {
+            cache: 'no-store',
+            headers: { Accept: 'application/vnd.github+json' },
+          });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const result = await response.json();
+          const endpoint = JSON.parse(decodeBase64Utf8(result.content || ''));
+          const remote = String(endpoint.api_base || '').replace(/\/+$/, '');
+          if (remote) candidates.push(remote);
+        } catch (error) {}
+        // GitHub 是公网地址的唯一来源；本地缓存只作为接口临时不可读时的兜底。
+        const cached = String(localStorage.getItem(API_BASE_KEY) || '').replace(/\/+$/, '');
+        if (cached && !candidates.includes(cached)) candidates.push(cached);
+        for (const candidate of candidates) {
+          if (await checkApiBase(candidate)) {
+            apiBase = candidate;
+            syncEnabled = true;
+            localStorage.setItem(API_BASE_KEY, candidate);
+            return true;
+          }
         }
+        apiBase = '';
+        syncEnabled = false;
+        return false;
+      })();
+      try {
+        return await syncResolvePromise;
+      } finally {
+        syncResolvePromise = null;
       }
-      apiBase = '';
-      syncEnabled = false;
     }
 
     function noteStatus(message, state = '') {
@@ -1866,8 +1878,9 @@
       } catch (error) {
         if (!live) throw error;
         // 公网实时通道偶尔会切换地址或短暂断线；先用随页面发布的快照兜底，
-        // 下一次打开仍会重新解析 GitHub 里的最新通道地址。
+        // 下一轮自动刷新或手动刷新会重新解析 GitHub 里的最新通道地址。
         syncEnabled = false;
+        apiBase = '';
         const fallback = await fetch(API, { cache: 'no-store' });
         if (!fallback.ok) throw error;
         const data = await fallback.json();
@@ -1905,11 +1918,12 @@
 
     async function syncInventory(manual = false) {
       if (STATIC_SNAPSHOT) {
+        if (!syncEnabled || manual) await resolveSyncBase(true);
         if (syncEnabled) {
           if (manual) showToast('正在读取后台最新数据', 900);
           await loadData(manual);
         } else {
-          showToast('实时通道暂未连接，当前显示上次快照', 2200);
+          showToast('实时通道暂时不可用，当前显示最新快照', 2400);
         }
         return;
       }
@@ -1949,12 +1963,16 @@
       if (started) void finishInventorySync(beforeAttempt, beforeInventory, manual);
     }
 
-    async function loadData(manual = false) {
+    async function loadData(manual = false, reconnect = false) {
       if (loading || inventorySyncing) return;
       loading = true;
       $('refresh').disabled = true;
       $('updated').textContent = manual ? '正在刷新…' : $('updated').textContent;
       try {
+        if (reconnect && STATIC_SNAPSHOT && !syncEnabled) {
+          $('updated').textContent = '正在重新连接实时库存…';
+          await resolveSyncBase(true);
+        }
         const [data] = await Promise.all([fetchDashboard(), fetchOrderRecords(), fetchRestockNotes()]);
         renderDashboard(data, manual);
         const restock = data && data.details && data.details.restock;
@@ -2032,8 +2050,14 @@
       await Promise.all([snapshotLoad, syncReady]);
       if (STATIC_SNAPSHOT && syncEnabled) await loadData();
       setInterval(() => {
-        if (!document.hidden) void loadData();
+        if (!document.hidden) void loadData(false, true);
       }, AUTO_REFRESH_MS);
+      window.addEventListener('online', () => {
+        if (!document.hidden) void loadData(false, true);
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && STATIC_SNAPSHOT && !syncEnabled) void loadData(false, true);
+      });
     })();
   </script>
 </body>
