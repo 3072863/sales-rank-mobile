@@ -548,6 +548,7 @@
     const SYNC_ENDPOINT_LOOKUP = 'https://api.github.com/repos/3072863/3072863/contents/sales-rank-endpoint.json?ref=main';
     const API_BASE_KEY = 'zs_sr_api_base_v1';
     const ORDER_TTL_MS = 30 * 86400000;
+    const ORDER_AUTO_CLEAR_PERCENT = 90;
     const PAGE_SIZE = 20;
     const AUTO_REFRESH_MS = STATIC_SNAPSHOT ? 5 * 60 * 1000 : 60 * 1000;
     const DAYS_RED = 10, DAYS_ORANGE = 18, DAYS_YELLOW = 30, MIN_STOCK = 10;
@@ -1010,6 +1011,9 @@
     function orderRecordStatusText(code, entries) {
       const state = restockArrivalCache[code];
       const progress = state && state.progress;
+      if (arrivalReachedAutoClear(progress)) {
+        return '到货量已达 ' + ORDER_AUTO_CLEAR_PERCENT + '% · 自动移出';
+      }
       if (progress && num(progress.needed_qty) > 0) {
         const remaining = Math.max(0, num(progress.remaining_qty));
         const arrived = Math.max(0, num(progress.needed_qty) - remaining);
@@ -1035,6 +1039,7 @@
     function restockArrivalBoxHtml(code) {
       const state = restockArrivalCache[code];
       const progress = state && state.progress || null;
+      const autoClear = arrivalReachedAutoClear(progress);
       // 只展示真正参与补货冲减的机器人入库；牛马售后等普通/退货入库只留在后台记录里。
       const arrivals = state && Array.isArray(state.arrivals)
         ? state.arrivals.filter((event) => event && event.counted === true)
@@ -1046,6 +1051,10 @@
       if (!syncEnabled) {
         status = '共享服务未连接';
         summary = '<div class="arrival-summary">当前只能看到本机记录，暂时无法读取服务器到货明细。</div>';
+      } else if (autoClear) {
+        status = '到货量已达 ' + ORDER_AUTO_CLEAR_PERCENT + '% · 自动移出';
+        summary = '<div class="arrival-summary">机器人有效到货总量已达到下单量 ' +
+          ORDER_AUTO_CLEAR_PERCENT + '%，已下单记录已自动移出。</div>';
       } else if (progress && num(progress.needed_qty) > 0) {
         const remaining = Math.max(0, num(progress.remaining_qty));
         if (remaining > 0) {
@@ -1181,7 +1190,17 @@
         .sort((a, b) => a.t - b.t);
     }
 
+    function arrivalReachedAutoClear(progress) {
+      const needed = num(progress && progress.needed_qty);
+      if (needed <= 0) return false;
+      if (progress.complete === true || progress.auto_clear === true) return true;
+      const arrived = Math.max(num(progress.counted_qty), num(progress.fulfilled_qty));
+      return arrived * 100 >= needed * ORDER_AUTO_CLEAR_PERCENT;
+    }
+
     function orderRecordOf(code) {
+      const state = restockArrivalCache[code];
+      if (arrivalReachedAutoClear(state && state.progress)) return null;
       const entries = orderEntriesOf(code);
       if (!entries.length) return null;
       return buildOrderRecord(entries, entries[entries.length - 1].t);
@@ -1330,6 +1349,7 @@
     function orderRecordBoxHtml(code) {
       const entries = orderEntriesOf(code).slice().reverse();
       const progress = restockArrivalCache[code] && restockArrivalCache[code].progress || null;
+      const autoCleared = arrivalReachedAutoClear(progress);
       const remainingQty = progress && num(progress.needed_qty) > 0
         ? Math.max(0, num(progress.remaining_qty))
         : 0;
@@ -1359,7 +1379,18 @@
           '<div class="order-record-time">已到货部分已自动冲减；到齐后这条剩余记录自动清除。</div>' +
         '</div>' +
       '</div>';
-      const body = pendingArrival
+      const autoClearedBody = '<div class="order-record-list">' +
+        '<div class="order-record-item pending-arrival">' +
+          '<div class="order-record-item-head">' +
+            '<div class="order-record-item-meta">到货量已达到下单量 <b>' +
+              ORDER_AUTO_CLEAR_PERCENT + '%</b></div>' +
+          '</div>' +
+          '<div class="order-record-time">已下单记录已自动移出。</div>' +
+        '</div>' +
+      '</div>';
+      const body = autoCleared
+        ? autoClearedBody
+        : pendingArrival
         ? pendingBody
         : entries.length
         ? '<div class="order-record-list">' + entries.map((entry) => (
@@ -1379,7 +1410,7 @@
       return '<div class="order-record-box" id="orderRecordBox">' +
         '<div class="order-record-top">' +
           '<span class="order-record-title">' +
-            (pendingArrival ? '剩余未到货' : '已下单记录') + '</span>' +
+            (autoCleared ? '补货已结束' : pendingArrival ? '剩余未到货' : '已下单记录') + '</span>' +
           '<strong class="order-record-status' + (statusWarn ? ' warn' : '') +
             '" id="orderRecordStatus">' + esc(status) + '</strong>' +
         '</div>' + body + restockArrivalBoxHtml(code) +
