@@ -1354,6 +1354,14 @@
       return deleteOrderRecordRemote(key, entryId);
     }
 
+    async function deleteAllOrderRecord(code) {
+      const key = String(code || '').trim();
+      if (!key) return null;
+      orderRecords[key] = buildOrderRecord([], Date.now());
+      saveJson(ORDER_KEY, orderRecords);
+      return deleteOrderRecordRemote(key);
+    }
+
     function orderRecordBoxHtml(code) {
       const entries = orderEntriesOf(code).slice().reverse();
       const progress = restockArrivalCache[code] && restockArrivalCache[code].progress || null;
@@ -1378,6 +1386,9 @@
           '<div class="order-record-item-head">' +
             '<div class="order-record-item-meta">到货后剩余 <b>' +
               fmtInt(remainingQty) + ' 双</b></div>' +
+            '<div class="order-record-item-actions">' +
+              '<button type="button" class="order-record-btn danger" data-order-delete-all="1">删除</button>' +
+            '</div>' +
           '</div>' +
           '<pre class="order-record-text">' + esc(pendingText) + '</pre>' +
           '<div class="order-record-time">已到货部分已自动冲减；到齐后这条剩余记录自动清除。</div>' +
@@ -1416,6 +1427,26 @@
         const entry = orderEntriesOf(code).find((item) => item.id === entryId);
         const copyBtn = node.querySelector('[data-order-copy]');
         const deleteBtn = node.querySelector('[data-order-delete]');
+        const deleteAllBtn = node.querySelector('[data-order-delete-all]');
+        if (deleteAllBtn) {
+          deleteAllBtn.addEventListener('click', async () => {
+            const entries = orderEntriesOf(code);
+            if (!entries.length) return;
+            const preview = entries.map((item) => orderEntryText(code, item)).join('\n\n');
+            if (!window.confirm('确定删除这款的全部补货记录吗？\n\n' + preview)) return;
+            deleteAllBtn.disabled = true;
+            try {
+              await deleteAllOrderRecord(code);
+              delete restockArrivalCache[code];
+              refreshOrderRecordBox(code);
+              renderCards();
+              showToast('已删除这款的全部补货记录');
+            } catch (error) {
+              deleteAllBtn.disabled = false;
+              showToast('删除失败，请稍后重试');
+            }
+          });
+        }
         if (copyBtn && entry) {
           copyBtn.addEventListener('click', () => {
             copyOrderCardToClipboard(code, orderEntryText(code, entry))
