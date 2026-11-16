@@ -1033,7 +1033,10 @@
     function restockArrivalBoxHtml(code) {
       const state = restockArrivalCache[code];
       const progress = state && state.progress || null;
-      const arrivals = state && Array.isArray(state.arrivals) ? state.arrivals : [];
+      // 只展示真正参与补货冲减的机器人入库；牛马售后等普通/退货入库只留在后台记录里。
+      const arrivals = state && Array.isArray(state.arrivals)
+        ? state.arrivals.filter((event) => event && event.counted === true)
+        : [];
       let status = '正在读取到货记录…';
       let statusClass = '';
       let summary = '<div class="arrival-summary">按尺码逐双冲减，全部减到 0 后才自动移出。</div>';
@@ -1075,8 +1078,8 @@
                 '<span class="arrival-event-time">' + esc(event.time || '') + '</span>' +
                 '<span class="arrival-event-qty">到货 ' + fmtInt(event.qty) + ' 双</span>' +
               '</div>' +
-              '<div class="arrival-event-source' + (event.counted ? ' counted' : '') + '">' +
-                esc(event.source_label || (event.counted ? '机器人入库 · 参与核销' : '普通入库 · 仅展示')) +
+              '<div class="arrival-event-source counted">' +
+                esc(event.source_label || '机器人入库 · 参与核销') +
               '</div>' +
               '<div class="arrival-event-sizes">' + esc(arrivalSizeText(event.sizes) || '—') + '</div>' +
             '</div>'
