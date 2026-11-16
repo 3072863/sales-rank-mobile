@@ -398,6 +398,7 @@
     .order-record-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .order-record-title { color: #526178; font-size: 12px; font-weight: 750; }
     .order-record-status { color: #1f4fd8; font-size: 12.5px; font-weight: 850; }
+    .order-record-status.warn { color: #b42318; }
     .order-record-time { margin-top: 5px; color: #8491a5; font-size: 10.5px; line-height: 1.5; }
     .order-record-list {
       display: grid; gap: 8px; margin-top: 8px; max-height: 300px;
@@ -418,6 +419,32 @@
       color: #334155; font: 11px/1.65 "SFMono-Regular", Consolas, "Microsoft YaHei", monospace;
       white-space: pre-wrap; word-break: break-word;
     }
+    .arrival-record {
+      margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cfdff4;
+    }
+    .arrival-record-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .arrival-record-title { color: #526178; font-size: 12px; font-weight: 750; }
+    .arrival-record-status { color: #15803d; font-size: 12px; font-weight: 850; text-align: right; }
+    .arrival-record-status.warn { color: #b42318; }
+    .arrival-summary { margin-top: 7px; color: #6b7a90; font-size: 10.5px; line-height: 1.55; }
+    .arrival-summary b { color: #334155; }
+    .arrival-summary .short { color: #b42318; font-weight: 800; }
+    .arrival-sizes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .arrival-size-chip {
+      display: inline-flex; align-items: center; gap: 3px; min-height: 24px;
+      padding: 3px 7px; border: 1px solid #d7e8dc; border-radius: 7px;
+      background: #f3fbf5; color: #217a3b; font-size: 10px; font-weight: 750;
+      font-variant-numeric: tabular-nums;
+    }
+    .arrival-size-chip.short { border-color: #f0c8c4; background: #fff5f4; color: #b42318; }
+    .arrival-list { display: grid; gap: 7px; margin-top: 8px; max-height: 240px; overflow-y: auto; }
+    .arrival-event { padding: 8px 9px; border: 1px solid #e3ebf5; border-radius: 9px; background: #fff; }
+    .arrival-event-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .arrival-event-time { color: #64748b; font-size: 10.5px; font-weight: 700; }
+    .arrival-event-qty { color: #1f4fd8; font-size: 11.5px; font-weight: 850; }
+    .arrival-event-source { margin-top: 4px; color: #8a96a8; font-size: 9.5px; }
+    .arrival-event-source.counted { color: #15803d; }
+    .arrival-event-sizes { margin-top: 4px; color: #536174; font-size: 10px; line-height: 1.55; }
     .sheet-actions {
       flex: 0 0 auto;
       display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -513,6 +540,7 @@
     const ORDER_KEY = 'zs_sr_order_v1';
     const ORDER_RECORDS_API = '/svc8123/api/restock/order-records';
     const ORDER_RECORD_API = '/svc8123/api/restock/order-record';
+    const RESTOCK_ARRIVALS_API = '/svc8123/api/restock/arrivals';
     const RESTOCK_NOTES_API = '/svc8123/api/restock/notes';
     const RESTOCK_NOTE_API = '/svc8123/api/restock/note';
     const SYNC_ENDPOINT_LOOKUP = 'https://api.github.com/repos/3072863/3072863/contents/sales-rank-endpoint.json?ref=main';
@@ -536,6 +564,8 @@
     let lastRenderSignature = '';
     let defaultSortNote = '按桌面版销售排行顺序';
     const planOverrides = Object.create(null);
+    const restockArrivalCache = Object.create(null);
+    const restockArrivalPending = Object.create(null);
     let orderRecords = readJson(ORDER_KEY, {});
     let noteSyncTimer = null;
     let apiBase = '';
@@ -975,6 +1005,113 @@
       return lines.join('\n');
     }
 
+    function orderRecordStatusText(code, entries) {
+      const state = restockArrivalCache[code];
+      const progress = state && state.progress;
+      if (progress && num(progress.needed_qty) > 0) {
+        if (num(progress.counted_qty) > 0 || num(progress.fulfilled_qty) > 0) {
+          return '部分到货 · 已满足 ' + fmtInt(progress.fulfilled_qty) +
+            ' / ' + fmtInt(progress.needed_qty) + ' 双' +
+            (progress.shortage_text ? ' · ' + progress.shortage_text : '');
+        }
+      }
+      const latest = entries[0] || null;
+      return latest
+        ? '待工厂到货 · 共 ' + entries.length + ' 次 · 最近 ' + fmtInt(latest.q) + ' 双'
+        : '暂无记录';
+    }
+
+    function arrivalSizeText(sizes) {
+      return (Array.isArray(sizes) ? sizes : [])
+        .map((size) => String(size.s || '') + '码 ' + fmtInt(size.q) + '双')
+        .join(' · ');
+    }
+
+    function restockArrivalBoxHtml(code) {
+      const state = restockArrivalCache[code];
+      const progress = state && state.progress || null;
+      const arrivals = state && Array.isArray(state.arrivals) ? state.arrivals : [];
+      let status = '正在读取到货记录…';
+      let statusClass = '';
+      let summary = '<div class="arrival-summary">按尺码逐项核销，所有计划尺码到齐后才自动移出。</div>';
+
+      if (!syncEnabled) {
+        status = '共享服务未连接';
+        summary = '<div class="arrival-summary">当前只能看到本机记录，暂时无法读取服务器到货明细。</div>';
+      } else if (progress && num(progress.needed_qty) > 0) {
+        if (num(progress.counted_qty) > 0 || num(progress.fulfilled_qty) > 0) {
+          status = '已满足 ' + fmtInt(progress.fulfilled_qty) + ' / ' + fmtInt(progress.needed_qty) + ' 双';
+          if (progress.shortage_text) {
+            status = '未到齐 · ' + progress.shortage_text;
+            statusClass = ' warn';
+          } else if (progress.complete) {
+            status = '全部尺码已到齐';
+          }
+        } else {
+          status = '尚未收到机器人入库';
+        }
+        summary = '<div class="arrival-summary">' +
+          (progress.shortage_text
+            ? '按尺码核对：<span class="short">' + esc(progress.shortage_text) + '</span>，所以暂不自动移出。'
+            : '按尺码逐项核销，所有计划尺码到齐后才自动移出。') +
+          '</div>';
+      } else if (!restockArrivalPending[code] && state) {
+        status = '暂无到货记录';
+      }
+
+      const sizeChips = progress && Array.isArray(progress.sizes) && progress.sizes.length
+        ? '<div class="arrival-sizes">' + progress.sizes.map((size) => (
+            '<span class="arrival-size-chip' + (size.ok ? '' : ' short') + '">' +
+              esc(size.s) + '码 ' + fmtInt(size.arrived) + '/' + fmtInt(size.needed) +
+            '</span>'
+          )).join('') + '</div>'
+        : '';
+      const eventHtml = arrivals.length
+        ? '<div class="arrival-list">' + arrivals.map((event) => (
+            '<div class="arrival-event">' +
+              '<div class="arrival-event-head">' +
+                '<span class="arrival-event-time">' + esc(event.time || '') + '</span>' +
+                '<span class="arrival-event-qty">到货 ' + fmtInt(event.qty) + ' 双</span>' +
+              '</div>' +
+              '<div class="arrival-event-source' + (event.counted ? ' counted' : '') + '">' +
+                esc(event.source_label || (event.counted ? '机器人入库 · 参与核销' : '普通入库 · 仅展示')) +
+              '</div>' +
+              '<div class="arrival-event-sizes">' + esc(arrivalSizeText(event.sizes) || '—') + '</div>' +
+            '</div>'
+          )).join('') + '</div>'
+        : '';
+
+      return '<div class="arrival-record" id="arrivalRecordBox">' +
+        '<div class="arrival-record-top">' +
+          '<span class="arrival-record-title">到货记录</span>' +
+          '<strong class="arrival-record-status' + statusClass + '">' + esc(status) + '</strong>' +
+        '</div>' + summary + sizeChips + eventHtml +
+      '</div>';
+    }
+
+    async function fetchRestockArrivalProgress(code) {
+      if (!syncEnabled || !orderEntriesOf(code).length || restockArrivalPending[code]) return;
+      restockArrivalPending[code] = true;
+      if (currentCode === code) refreshOrderRecordBox(code, false);
+      try {
+        const response = await fetch(
+          serviceUrl(RESTOCK_ARRIVALS_API + '?code=' + encodeURIComponent(code)),
+          { cache: 'no-store' },
+        );
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const result = await response.json();
+        if (!result || result.success === false) {
+          throw new Error(result && result.msg || '读取到货记录失败');
+        }
+        restockArrivalCache[code] = result;
+      } catch (error) {
+        delete restockArrivalCache[code];
+      } finally {
+        delete restockArrivalPending[code];
+        if (currentCode === code) refreshOrderRecordBox(code, false);
+      }
+    }
+
     function normaliseOrderEntry(raw) {
       if (!raw || typeof raw !== 'object') return null;
       const q = Math.round(num(raw.q));
@@ -1166,9 +1303,10 @@
     function orderRecordBoxHtml(code) {
       const entries = orderEntriesOf(code).slice().reverse();
       const latest = entries[0] || null;
-      const status = latest
-        ? '待工厂到货 · 共 ' + entries.length + ' 次 · 最近 ' + fmtInt(latest.q) + ' 双'
-        : '暂无记录';
+      const status = orderRecordStatusText(code, entries);
+      const statusWarn = !!(restockArrivalCache[code] &&
+        restockArrivalCache[code].progress &&
+        restockArrivalCache[code].progress.shortage_text);
       const body = entries.length
         ? '<div class="order-record-list">' + entries.map((entry) => (
             '<div class="order-record-item" data-order-id="' + esc(entry.id) + '">' +
@@ -1187,8 +1325,9 @@
       return '<div class="order-record-box" id="orderRecordBox">' +
         '<div class="order-record-top">' +
           '<span class="order-record-title">已下单记录</span>' +
-          '<strong class="order-record-status" id="orderRecordStatus">' + esc(status) + '</strong>' +
-        '</div>' + body +
+          '<strong class="order-record-status' + (statusWarn ? ' warn' : '') +
+            '" id="orderRecordStatus">' + esc(status) + '</strong>' +
+        '</div>' + body + restockArrivalBoxHtml(code) +
       '</div>';
     }
 
@@ -1229,12 +1368,12 @@
       });
     }
 
-    function refreshOrderRecordBox(code) {
+    function refreshOrderRecordBox(code, scroll = true) {
       const box = $('orderRecordBox');
       if (!box) return;
       box.outerHTML = orderRecordBoxHtml(code);
       bindOrderRecordBox(code);
-      requestAnimationFrame(() => {
+      if (scroll) requestAnimationFrame(() => {
         const next = $('orderRecordBox');
         if (next) next.scrollIntoView({ block: 'center', behavior: 'smooth' });
       });
@@ -1410,6 +1549,7 @@
         });
       }
       bindOrderRecordBox(code);
+      void fetchRestockArrivalProgress(code);
       $('copyPlan').addEventListener('click', () => copyPlan(item));
     }
 
