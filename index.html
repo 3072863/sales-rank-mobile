@@ -1524,7 +1524,8 @@
       const out = {};
       const state = restockArrivalCache[item.code];
       const progress = state && state.progress;
-      if (progress && num(progress.needed_qty) > 0 && Array.isArray(progress.sizes)) {
+      if (progress && num(progress.needed_qty) > 0 &&
+          Array.isArray(progress.sizes) && progress.sizes.length) {
         progress.sizes.forEach((size) => {
           const key = String(size && size.s || '').trim();
           if (key) out[key] = Math.max(0, num(size.shortage));
