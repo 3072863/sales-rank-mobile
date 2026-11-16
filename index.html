@@ -796,7 +796,7 @@
           : '';
         const orderRecord = orderRecordOf(item.code);
         const orderTag = orderRecord
-          ? '<span class="tag green">已下单 · 等到货 ' + fmtInt(orderRecord.q) + ' 双</span>'
+          ? '<span class="tag green">已下单 · 未到货 ' + fmtInt(orderRemainingOf(item.code)) + ' 双</span>'
           : '';
         const shipTag = '<span class="tag ship">30天已发 ' + fmtInt(item.s30) + ' 双</span>';
         return '<article class="sr-card" data-code="' + esc(item.code) + '" tabindex="0" role="button" aria-label="查看 ' + esc(item.code) + ' 详情">' +
@@ -1009,11 +1009,14 @@
       const state = restockArrivalCache[code];
       const progress = state && state.progress;
       if (progress && num(progress.needed_qty) > 0) {
-        if (num(progress.counted_qty) > 0 || num(progress.fulfilled_qty) > 0) {
-          return '部分到货 · 已满足 ' + fmtInt(progress.fulfilled_qty) +
-            ' / ' + fmtInt(progress.needed_qty) + ' 双' +
-            (progress.shortage_text ? ' · ' + progress.shortage_text : '');
+        const remaining = Math.max(0, num(progress.remaining_qty));
+        const arrived = Math.max(0, num(progress.needed_qty) - remaining);
+        if (remaining > 0) {
+          return (arrived > 0 ? '部分到货' : '待工厂到货') +
+            ' · 未到货 ' + fmtInt(remaining) + ' 双' +
+            (progress.remaining_text ? ' · ' + progress.remaining_text : '');
         }
+        return '全部尺码已到齐';
       }
       const latest = entries[0] || null;
       return latest
@@ -1033,27 +1036,25 @@
       const arrivals = state && Array.isArray(state.arrivals) ? state.arrivals : [];
       let status = '正在读取到货记录…';
       let statusClass = '';
-      let summary = '<div class="arrival-summary">按尺码逐项核销，所有计划尺码到齐后才自动移出。</div>';
+      let summary = '<div class="arrival-summary">按尺码逐双冲减，全部减到 0 后才自动移出。</div>';
 
       if (!syncEnabled) {
         status = '共享服务未连接';
         summary = '<div class="arrival-summary">当前只能看到本机记录，暂时无法读取服务器到货明细。</div>';
       } else if (progress && num(progress.needed_qty) > 0) {
-        if (num(progress.counted_qty) > 0 || num(progress.fulfilled_qty) > 0) {
-          status = '已满足 ' + fmtInt(progress.fulfilled_qty) + ' / ' + fmtInt(progress.needed_qty) + ' 双';
-          if (progress.shortage_text) {
-            status = '未到齐 · ' + progress.shortage_text;
-            statusClass = ' warn';
-          } else if (progress.complete) {
-            status = '全部尺码已到齐';
-          }
+        const remaining = Math.max(0, num(progress.remaining_qty));
+        if (remaining > 0) {
+          status = '未到货 ' + fmtInt(remaining) + ' 双';
+          statusClass = ' warn';
         } else {
-          status = '尚未收到机器人入库';
+          status = '全部尺码已到齐';
         }
         summary = '<div class="arrival-summary">' +
-          (progress.shortage_text
-            ? '按尺码核对：<span class="short">' + esc(progress.shortage_text) + '</span>，所以暂不自动移出。'
-            : '按尺码逐项核销，所有计划尺码到齐后才自动移出。') +
+          (remaining > 0
+            ? '按尺码逐双冲减：<span class="short">' +
+              esc(progress.remaining_text || progress.shortage_text || '') +
+              '</span>，订单继续保留。'
+            : '所有计划尺码已冲减到 0，订单自动移出。') +
           '</div>';
       } else if (!restockArrivalPending[code] && state) {
         status = '暂无到货记录';
@@ -1063,6 +1064,7 @@
         ? '<div class="arrival-sizes">' + progress.sizes.map((size) => (
             '<span class="arrival-size-chip' + (size.ok ? '' : ' short') + '">' +
               esc(size.s) + '码 ' + fmtInt(size.arrived) + '/' + fmtInt(size.needed) +
+              (size.ok ? '' : ' · 未到' + fmtInt(size.shortage)) +
             '</span>'
           )).join('') + '</div>'
         : '';
@@ -1180,6 +1182,16 @@
       return buildOrderRecord(entries, entries[entries.length - 1].t);
     }
 
+    function orderRemainingOf(code) {
+      const state = restockArrivalCache[code];
+      const progress = state && state.progress;
+      if (progress && num(progress.needed_qty) > 0) {
+        return Math.max(0, num(progress.remaining_qty));
+      }
+      const record = orderRecordOf(code);
+      return record ? Math.max(0, num(record.q)) : 0;
+    }
+
     function orderOf(code) {
       const record = orderRecordOf(code);
       return record ? record.q : 0;
@@ -1226,10 +1238,20 @@
         const result = await response.json();
         if (!result || result.success === false) throw new Error(result && result.msg || '读取补货记录失败');
         mergeOrderRecords(result.records);
+        applyRestockArrivalProgressMap(result.arrival_progress);
       } catch (error) {
         // 8123 暂时不可用时保留本机兜底记录，不阻塞销售榜显示。
       }
       return orderRecords;
+    }
+
+    function applyRestockArrivalProgressMap(progressMap) {
+      if (!progressMap || typeof progressMap !== 'object') return;
+      Object.entries(progressMap).forEach(([code, progress]) => {
+        if (!code || !progress || typeof progress !== 'object') return;
+        const current = restockArrivalCache[code] || {};
+        restockArrivalCache[code] = { ...current, progress };
+      });
     }
 
     async function postOrderRecord(payload) {
