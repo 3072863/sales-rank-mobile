@@ -1150,7 +1150,7 @@
       } finally {
         delete restockArrivalPending[code];
         if (currentCode === code) {
-          refreshTargetPlanView(code);
+          refreshDetailPlanView(code);
           refreshOrderRecordBox(code, false);
         }
       }
@@ -1505,11 +1505,12 @@
 
     function planTotalOf(item) {
       const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
+      if (!sizes.length) return num(item.plan);
       const overrides = planOverridesOf(item.code);
-      const targetPlans = targetPlansOf(item);
-      if (!Object.keys(overrides).length && !targetPlans) return num(item.plan);
+      const pending = unarrivedBySizeOf(item);
+      const targetPlans = targetPlansOf(item, pending);
       return sizes.reduce((sum, size) =>
-        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans)), 0);
+        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans, pending)), 0);
     }
 
     function savePlanOverride(code, size, value, suggested) {
@@ -1558,7 +1559,7 @@
     }
 
     // 目标量先按销量占比分到各码，再扣该码实际库存和尚未到货的上次下单量。
-    function targetPlansOf(item) {
+    function targetPlansOf(item, pending = unarrivedBySizeOf(item)) {
       const target = Math.max(0, Math.round(num(stockTargets[item.code])));
       const sizes = item.chart && Array.isArray(item.chart.sizes) ? item.chart.sizes : [];
       if (!(target > 0) || !sizes.length) return null;
@@ -1577,7 +1578,6 @@
         left -= 1;
         cursor += 1;
       }
-      const pending = unarrivedBySizeOf(item);
       const plans = {};
       sizes.forEach((size, index) => {
         const key = String(size.s);
@@ -1586,15 +1586,15 @@
       return plans;
     }
 
-    function targetBasePlan(item, size, targetPlans) {
+    function targetBasePlan(item, size, targetPlans, pending) {
       const key = String(size.s);
       return targetPlans
         ? num(targetPlans[key])
-        : num(size.plan);
+        : Math.max(0, num(size.plan) - num(pending[key]));
     }
 
-    function refreshTargetPlanView(code) {
-      if (!(num(stockTargets[code]) > 0) || currentCode !== code) return;
+    function refreshDetailPlanView(code) {
+      if (currentCode !== code) return;
       const item = allItems.find((entry) => entry.code === code);
       const host = $('sizeTableHost');
       if (!item || !host) return;
@@ -1632,7 +1632,7 @@
             fmtInt(stockSum) + ' 双 · 已下单未到货 ' + fmtInt(orderRemainingOf(code)) +
             ' 双 · 本次补 <b>' + fmtInt(planSum) + ' 双</b>';
         } else {
-          targetHint.textContent = '按销售占比分配，自动扣库存和已下单未到货';
+          targetHint.textContent = '系统建议已扣已下单未到货；临时填目标后按销量占比分配';
         }
       }
     }
@@ -1669,15 +1669,16 @@
       if (!chart || !Array.isArray(chart.sizes) || !chart.sizes.length) {
         return '<div class="empty" style="padding:18px">暂无尺码数据</div>';
       }
-      const targetPlans = targetPlansOf(item);
+      const pending = unarrivedBySizeOf(item);
+      const targetPlans = targetPlansOf(item, pending);
       const total = chart.sizes.reduce((sum, size) => sum + num(size.n), 0);
       const sumStock = chart.sizes.reduce((sum, size) => sum + num(size.stock), 0);
       const sumPlan = chart.sizes.reduce((sum, size) =>
-        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans)), 0);
+        sum + planOf(item.code, String(size.s), targetBasePlan(item, size, targetPlans, pending)), 0);
       const overrides = planOverridesOf(item.code);
       const rows = chart.sizes.map((size) => {
         const stock = num(size.stock);
-        const suggested = targetBasePlan(item, size, targetPlans);
+        const suggested = targetBasePlan(item, size, targetPlans, pending);
         const plan = planOf(item.code, String(size.s), suggested);
         const changed = Object.prototype.hasOwnProperty.call(overrides, String(size.s));
         const stockClass = stock < 0 ? 'stock-zero' : (stock === 0 ? 'stock-zero' : (stock <= 3 ? 'stock-low' : ''));
@@ -1743,7 +1744,7 @@
               ' value="' + (target > 0 ? target : '') + '" placeholder="如 300" aria-label="目标备货数量">' +
             '<span class="target-unit">双</span>' +
             '<button type="button" class="target-reset" id="resetStockTarget">恢复默认补单</button>' +
-            '<span class="target-hint" id="targetHint">按销售占比分配，自动扣库存和已下单未到货</span>' +
+            '<span class="target-hint" id="targetHint">系统建议已扣已下单未到货；临时填目标后按销量占比分配</span>' +
           '</div>' +
           '<div id="sizeTableHost">' + sizeTableHtml(item) + '</div>' +
         '</section>' +
